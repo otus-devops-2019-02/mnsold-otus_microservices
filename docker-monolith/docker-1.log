@@ -1,7 +1,7 @@
-REPOSITORY          TAG                 IMAGE ID            CREATED              SIZE
-<none>              <none>              dc9162d110cc        About a minute ago   119MB
-ubuntu              16.04               a3551444fc85        10 days ago          119MB
-hello-world         latest              fce289e99eb9        4 months ago         1.84kB
+REPOSITORY                        TAG                 IMAGE ID            CREATED              SIZE
+maksim_soldatov/ubuntu-tmp-file   latest              c7fb4d6717c6        18 seconds ago       119MB
+ubuntu                            16.04               a3551444fc85        10 days ago          119MB
+hello-world                       latest              fce289e99eb9        4 months ago         1.84kB
 
 docker inspect container_id
 Показывет информацию о контейнере, его состоянии, сетевое окружение, ограничения на ресурсы (ЦП/память/…), монтирумые точки
