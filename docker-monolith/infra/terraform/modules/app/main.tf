@@ -3,7 +3,7 @@ resource "google_compute_instance" "app" {
   machine_type = "g1-small"
   zone         = "${var.zone}"
   tags         = ["reddit-app"]
-  count = "${var.app_pool_nodes}"
+  count        = "${var.app_pool_nodes}"
 
   # определение загрузочного диска
   boot_disk {
@@ -32,53 +32,6 @@ resource "google_compute_instance" "app" {
 
 resource "google_compute_address" "app_ip" {
   #IP для инстанса с приложением в виде внешнего ресурса
-  name = "reddit-app-ip${count.index}"
+  name  = "reddit-app-ip${count.index}"
   count = "${var.app_pool_nodes}"
-}
-
-resource "google_compute_firewall" "firewall_puma" {
-  name = "allow-puma-default"
-
-  # Название сети, в которой действует правило
-  network = "default"
-
-  # Какой доступ разрешить
-  allow {
-    protocol = "tcp"
-    ports    = ["9292"]
-  }
-
-  # Каким адресам разрешаем доступ
-  source_ranges = ["0.0.0.0/0"]
-
-  # Правило применимо для инстансов с перечисленными тэгами
-  target_tags = ["reddit-app"]
-}
-
-data "template_file" "puma_env" {
-  #шаблон для создания конфигурации puma.service
-  template = "${file("${path.module}/files/puma_env.tmpl.sh")}"
-
-  vars {
-    database_url = "${var.database_url}"
-  }
-}
-
-resource "google_compute_firewall" "firewall_puma_http" {
-  name = "allow-puma-http"
-
-  # Название сети, в которой действует правило
-  network = "default"
-
-  # Какой доступ разрешить
-  allow {
-    protocol = "tcp"
-    ports    = ["80"]
-  }
-
-  # Каким адресам разрешаем доступ
-  source_ranges = ["0.0.0.0/0"]
-
-  # Правило применимо для инстансов с перечисленными тэгами
-  target_tags = ["reddit-app"]
 }

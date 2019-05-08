@@ -16,7 +16,7 @@ module "app" {
   zone             = "${var.zone}"
   app_disk_image   = "${var.app_disk_image}"
   private_key_path = "${var.private_key_path}"
-  app_pool_nodes     = "${var.app_pool_nodes}"
+  app_pool_nodes   = "${var.app_pool_nodes}"
 }
 
 module "vpc" {
