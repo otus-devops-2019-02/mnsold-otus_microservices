@@ -1,0 +1,8 @@
+---
+- name: Get machine kernel name
+  command: uname -s
+  register: machine_kernel_name
+
+- name: Get machine hardware name
+  command: uname -m
+  register: machine_hardware_name
