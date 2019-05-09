@@ -10,12 +10,12 @@ docker_service_enabled: true
 docker_restart_handler_state: restarted
 
 # Docker Compose options.
-docker_install_compose: true
+docker_install_compose: false
 docker_compose_version: "1.22.0"
 docker_compose_path: /usr/local/bin/docker-compose
 
 # Docker Machine options.
-docker_install_machine: true
+docker_install_machine: false
 docker_machine_version: "v0.16.0"
 docker_machine_path: /usr/local/bin/docker-machine
 

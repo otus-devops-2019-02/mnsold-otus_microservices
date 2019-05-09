@@ -23,5 +23,7 @@
         ansible_facts['distribution'] == "Linux Mint"
     - debug: msg="Set distribution - {{ ansible_distribution }} / {{ ansible_distribution_release }}"
 
+    - debug: msg="Get options - docker_install_compose = {{ docker_install_compose }}, docker_install_machine = {{ docker_install_machine }}, docker_users = {{ docker_users }}"
+
   roles:
   - docker
