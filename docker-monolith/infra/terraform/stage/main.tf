@@ -19,7 +19,8 @@ module "app" {
   app_pool_nodes   = "${var.app_pool_nodes}"
 }
 
-module "vpc" {
-  source        = "../modules/vpc"
-  source_ranges = ["0.0.0.0/0"]
-}
+# Временно заблокирован модуль по управлению доступом к серверам по SSH
+#module "vpc" {
+#  source        = "../modules/vpc"
+#  source_ranges = ["0.0.0.0/0"]
+#}
