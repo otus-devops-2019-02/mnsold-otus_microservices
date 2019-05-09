@@ -1,21 +1,8 @@
 ---
+# установка docker и если определены: docker-compose/docker-machine
 - name: Install docker
-  hosts: all
+  hosts: all:!ungrouped
   become: true
-
-  vars:
-    docker_edition: 'ce'
-    # в readme роли приведен формат docker_package:
-    # без версии пакета, с версией в зависимости от ОС RH/Debian based
-    docker_package: "docker-{{ docker_edition }}=18.06*"
-    docker_package_state: present
-    docker_service_state: started
-    docker_service_enabled: true
-    docker_restart_handler_state: restarted
-    docker_install_compose: true
-    docker_compose_version: "1.24.0"
-    docker_install_machine: true
-    docker_machine_version: "v0.16.0"
 
   pre_tasks:
     - name: Set Linux Mint facts
