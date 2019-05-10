@@ -2,6 +2,7 @@
 # запуск приложения в контейнере
 - name: Deploy reddit app to docker
   hosts: app
+  become: true
 
   tasks:
     - name: Pull reddit image

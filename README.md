@@ -111,11 +111,12 @@ terraform apply
 
 ### Поднять пул инстансов terraform
 
-```
+```bash
 cd docker-monolith/infra/terraform/stage
 terraform init
 
-terraform import module.vpc.google_compute_firewall.firewall_ssh default-allow-ssh
+# module.vpc временно отключен, выполнять не требуется
+#terraform import module.vpc.google_compute_firewall.firewall_ssh default-allow-ssh
 terraform apply
 ```
 
@@ -169,8 +170,11 @@ gcloud compute instances create packer-docker \
 
 ssh appuser@<EXTERNAL_IP> -i ~/.ssh/appuser
 docker --version
-Docker version 18.09.6, build 481bc77
-
+Docker version 18.06.3-ce, build d7080c1
 
 gcloud compute instances delete packer-docker --zone europe-west1-b --delete-disks=all
 ```
+
+Примечание:
+
+Было замечено, что сборка может упасть с ошибкой `Unable to locate package python-minimal`, но если запустить сборку еще раз без каких либо изменений, то сборка проходит успешно, возможно этто коссяк какого-то образа и нужно зафиксировать конкретный образ для сборки, или предварительно проверить/установить некоторые репозитории типа `universe`.

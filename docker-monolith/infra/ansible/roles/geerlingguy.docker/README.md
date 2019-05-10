@@ -33,12 +33,6 @@ Variables to control the state of the `docker` service, and whether it should st
 
 Docker Compose installation options.
 
-    docker_install_machine: true
-    docker_compose_version: "v0.16.0"
-    docker_machine_path: /usr/local/bin/docker-machine
-
-Docker Machine installation options.
-
     docker_apt_release_channel: stable
     docker_apt_arch: amd64
     docker_apt_repository: "deb [arch={{ docker_apt_arch }}] https://download.docker.com/linux/{{ ansible_distribution|lower }} {{ ansible_distribution_release }} {{ docker_apt_release_channel }}"

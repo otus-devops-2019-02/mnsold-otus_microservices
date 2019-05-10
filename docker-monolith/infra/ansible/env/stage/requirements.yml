@@ -1,2 +1,2 @@
-- src: jdauphant.nginx
-  version: v2.21.1
+- src: geerlingguy.docker
+  version: 2.5.2

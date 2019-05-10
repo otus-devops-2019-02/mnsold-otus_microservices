@@ -1,6 +1,4 @@
 ---
-- include_tasks: uname_system_information.yml
-
 - include_tasks: setup-RedHat.yml
   when: ansible_os_family == 'RedHat'
 
@@ -28,9 +26,6 @@
 
 - include_tasks: docker-compose.yml
   when: docker_install_compose
-
-- include_tasks: docker-machine.yml
-  when: docker_install_machine
 
 - include_tasks: docker-users.yml
   when: docker_users

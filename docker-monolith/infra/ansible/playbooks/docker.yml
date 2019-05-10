@@ -9,7 +9,7 @@
       vars:
         fact_base_os: "{{ lookup('file', '/etc/upstream-release/lsb-release') }}"
       set_fact:
-        #Для отдельной задачи pre_tasks: Return base OS of Linux Min
+        #Для отдельной задачи pre_tasks: Return base OS of Linux Mint
         #  command: cat /etc/upstream-release/lsb-release
         #  register: fact_base_os
         #ansible_distribution: "{{ fact_base_os.stdout| regex_search('DISTRIB_ID=([^\n]+)', '\\1')|first| lower }}"
@@ -26,4 +26,6 @@
     - debug: msg="Get options - docker_install_compose = {{ docker_install_compose }}, docker_install_machine = {{ docker_install_machine }}, docker_users = {{ docker_users }}"
 
   roles:
-  - docker
+    - geerlingguy.docker
+    - docker-machine
+#    - docker
