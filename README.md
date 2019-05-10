@@ -42,3 +42,135 @@ mnsold-otus microservices repository
 - Рассмотрена директива `system df` по тотбражению использования дискового пространства занятого / может быть освобождено
 
 - Рассмотрены директивы `rm` `rmi` по удалению контейнера и имиджа
+
+ДЗ№15
+# ДЗ №15
+
+## Создание хостовой машины docker-machine в GCP
+
+```bash
+export GOOGLE_PROJECT=docker-otus-201905
+```
+
+```bash
+# создать
+docker-machine create --driver google \
+    --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
+    --google-machine-type n1-standard-1 \
+    --google-zone europe-west1-b \
+    docker-host
+
+# список хостов docker-machine 
+docker-machine ls
+
+# указать окружение хоста docker-machine c установленным docker-engine, с которым будем работать
+eval $(docker-machine env docker-host)
+#посмотреть какие переменные установились
+set|grep DOCKER_*
+DOCKER_CERT_PATH=/home/mnsold/.docker/machine/machines/docker-host
+DOCKER_HOST=tcp://35.241.251.193:2376
+DOCKER_MACHINE_NAME=docker-host
+DOCKER_TLS_VERIFY=1
+
+
+# переключиться в локальное окружение
+eval $(docker-machine env --unset)
+```
+
+Проверка
+
+```bash
+docker-machine ls
+NAME          ACTIVE   DRIVER   STATE     URL                         SWARM   DOCKER     ERRORS
+docker-host   *        google   Running   tcp://35.241.251.193:2376           v18.09.6
+
+echo $DOCKER_MACHINE_NAME
+docker-host
+
+docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+reddit              latest              ba6d8bfedfae        4 minutes ago       682MB
+
+# переключаемся в локальное окружение, ничего нет, все на удаленной машине
+docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+```
+
+## Задание со *
+
+### Создать storage сегмент
+
+backend для хранения состояния terraform
+
+```bash
+cd /docker-monolith/infra/terraform/backend
+terraform init
+
+terraform apply
+```
+
+### Поднять пул инстансов terraform
+
+```
+cd docker-monolith/infra/terraform/stage
+terraform init
+
+terraform import module.vpc.google_compute_firewall.firewall_ssh default-allow-ssh
+terraform apply
+```
+
+Пригодится:
+
+- указать статический IP для пула инстансов
+
+  https://stackoverflow.com/questions/46618068/deploy-gcp-instance-using-terraform-and-count-with-attached-disk
+
+### Плейбуки ansible с динамическим инвентори
+
+- Запустить основной плейбук, который установит питон (base.yml), докер (docker.yml), развернет приложение (deploy.yml)
+
+```bash
+cd docker-monolith/infra/ansible
+
+ansible-playbook playbooks/main-site.yml
+```
+
+- Проверка
+
+  Прейти по ссылке http://<terraform output http_lb_external_ip>:9292
+
+- Примечание:
+  
+  Т.к. исползуется динамический инвентори, который возвращает docker-machine в GCP и которой не должны применяться плейбуки, то
+  
+  - все хосты проекта должны быть определены в инвентори
+  - в плейбуках указано не применять к хостам, которые находятся не в группах `hosts: all:!ungrouped`, либо указывается конкретная кгруппа к которой требуется применять плейбук, чтобы плейбуки не применяись к docker-machine и обходили этот хост стороной
+
+### Образ packer'а с установленным docker
+
+```bash
+cd docker-monolith/infra/
+
+packer build -var-file=packer/variables.json packer/docker.json
+```
+
+- Проверка
+
+```bash
+gcloud compute instances create packer-docker \
+--boot-disk-size=10GB \
+--image-family ubuntu-docker-base \
+--image-project=docker-otus-201905 \
+--machine-type=g1-small \
+--tags docker-base \
+--zone europe-west1-b \
+--restart-on-failure
+
+
+ssh appuser@<EXTERNAL_IP> -i ~/.ssh/appuser
+docker --version
+Docker version 18.09.6, build 481bc77
+
+
+gcloud compute instances delete packer-docker --zone europe-west1-b --delete-disks=all
+```
