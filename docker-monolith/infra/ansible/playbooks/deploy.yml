@@ -1,0 +1,20 @@
+---
+# запуск приложения в контейнере
+- name: Deploy reddit app to docker
+  hosts: app
+  become: true
+
+  tasks:
+    - name: Pull reddit image
+      command: docker pull "mnsoldotus/otus-reddit:{{ reddit_app_docker_version }}"
+      when: reddit_app_docker_pull
+
+
+    - name: Deploy reddit container
+      docker_container:
+        name: reddit
+        image: "mnsoldotus/otus-reddit:{{ reddit_app_docker_version }}"
+        state: started
+        recreate: yes
+        ports:
+          - "9292:9292"

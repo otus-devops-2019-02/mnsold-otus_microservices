@@ -1,0 +1,10 @@
+{ 
+	"v_project_id": "stoked-infra-000001",
+	"v_source_image_family": "ubuntu-1604-lts",
+	"v_machine_type": "f1-micro",
+	"v_disk_size": "10",
+	"v_disk_type": "pd-standard",
+	"v_image_description": "Made using Packer",
+	"v_network": "default",
+	"v_tags": "puma-server"
+} 

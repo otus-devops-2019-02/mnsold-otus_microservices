@@ -1,0 +1,10 @@
+{
+	"v_project_id": "docker-otus-201905",
+	"v_source_image_family": "ubuntu-minimal-1804-lts",
+	"v_machine_type": "g1-small",
+	"v_disk_size": "10",
+	"v_disk_type": "pd-standard",
+	"v_image_description": "ubuntu-docker-base",
+	"v_network": "default",
+	"v_tags": "docker-base"
+}
