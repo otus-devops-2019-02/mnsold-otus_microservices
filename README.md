@@ -53,7 +53,8 @@ export GOOGLE_PROJECT=docker-otus-201905
 ```
 
 ```bash
-# создать
+# создать docker-machine
+export GOOGLE_PROJECT=<GCP_PROJECT>
 docker-machine create --driver google \
     --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
     --google-machine-type n1-standard-1 \
@@ -178,3 +179,70 @@ gcloud compute instances delete packer-docker --zone europe-west1-b --delete-dis
 Примечание:
 
 Было замечено, что сборка может упасть с ошибкой `Unable to locate package python-minimal`, но если запустить сборку еще раз без каких либо изменений, то сборка проходит успешно, возможно этто коссяк какого-то образа и нужно зафиксировать конкретный образ для сборки, или предварительно проверить/установить некоторые репозитории типа `universe`.
+
+# ДЗ №16
+
+- Написаны Dockerfiles для 3 компонентов: `post-py` - сервис отвечающий за написание постов; `comment` - сервис отвечающий за написание комментариев; `ui` - веб-интерфейс, работающий с другими сервисами.
+
+- Выполнена сборка образов и запущены приложения
+
+Создать сеть
+
+```
+docker network create reddit
+```
+
+Сборка образов
+
+```
+docker build -t mnsoldotus/post:1.0 ./post-py
+docker build -t mnsoldotus/comment:1.0 ./comment
+docker build -t mnsoldotus/ui:1.0 ./ui -f ui/Dockerfile.1
+```
+
+Создать том
+
+```
+docker volume create reddit_db
+```
+
+Задание со * (стр. 15). Запуск контейнеров с др алиасами
+
+```bash
+docker kill $(docker ps -q)
+
+docker run -d \
+--network=reddit \
+--network-alias=post_db_test \
+--network-alias=comment_db_test \
+-v reddit_db:/data/db \
+mongo:latest
+
+docker run -d \
+--network=reddit \
+--network-alias=post_test \
+--env POST_DATABASE_HOST=post_db_test \
+mnsoldotus/post:1.0
+
+docker run -d \
+--network=reddit \
+--network-alias=comment_test \
+--env COMMENT_DATABASE_HOST=comment_db_test \
+mnsoldotus/comment:1.0
+
+docker run -d \
+--network=reddit \
+--env POST_SERVICE_HOST=post_test \
+--env COMMENT_SERVICE_HOST=comment_test \
+-p 9292:9292 \
+mnsoldotus/ui:1.0
+
+```
+
+- Выполнено улучшение образа `ui`: 
+
+  - Вариант 1. на основе базового образа `ubuntu:16.04` (см коммит файла `src/ui/Dockerfile`)
+  - Вариант 2. на основе базового образа `alpine:3.9` (см файл `src/ui/Dockerfile)
+  - Вариант 3. на основе базового образа `ruby:alpine3.9` (см файл `src/ui/Dockerfile.1`)
+
+  Примечание: в каждом из последующих вариантов размер образа меньше чем в предыдущем варианте
