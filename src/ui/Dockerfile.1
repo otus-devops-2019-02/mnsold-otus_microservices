@@ -1,4 +1,4 @@
-FROM alpine:3.9
+FROM ruby:alpine3.9
 
 ENV APP_HOME /app
 ENV POST_SERVICE_HOST post
@@ -13,10 +13,7 @@ COPY Gemfile* $APP_HOME/
 
 RUN apk update \
     && apk add \
-        ruby ruby-json ruby-bundler \
-    && apk add \
-        --virtual .build-deps build-base ruby-dev \
-    && gem install bundler --no-ri --no-rdoc \
+        --virtual .build-deps build-base \
     && bundle install \
     && apk del .build-deps \
     && rm -rf /var/cache/apk/*
