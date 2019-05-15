@@ -246,3 +246,131 @@ mnsoldotus/ui:1.0
   - Вариант 3. на основе базового образа `ruby:alpine3.9` (см файл `src/ui/Dockerfile.1`)
 
   Примечание: в каждом из последующих вариантов размер образа меньше чем в предыдущем варианте
+
+#ДЗ №17
+
+## Сети
+
+- Рассмотрены сетевые драйверы `bridge` `host` `none`
+
+- Созданы сети для приложений фрона и бекэнда (ui только во фронте, сервисы во фронте и бэкенде, БД только в бэкенде):
+
+  ```bash
+  docker network create back_net  --subnet=10.0.2.0/24
+  docker network create front_net --subnet=10.0.1.0/24
+  ```
+  
+- Созданы контейнеры в разных сетях
+  ```bash
+  docker run -d --network=back_net --network-alias=post_db --network-alias=comment_db  --name mongo_db mongo:latest
+  docker run -d --network=back_net --network-alias=post --name post mnsoldotus/post:1.0
+  docker run -d --network=back_net --network-alias=comment --name comment mnsoldotus/comment:1.0
+  docker run -d --network=front_net -p 9292:9292 --name ui mnsoldotus/ui:1.0
+  ```
+
+  Выполнено онлайн подключение контейнеров к сети
+
+  ```bash
+  docker network connect front_net post 
+  docker network connect front_net comment 
+  ```
+  
+- Рассмотрены сетевые интерфейсы со стороны хостовой машины 
+
+  ```bash
+  docker network ls
+  brctl show <interface>
+  ```
+
+- Рассмотрены правила iptables
+
+  Цепочки `POSTROUTING`, `DOCKER` с правилом `DNAT`, процесса `docker-proxy` слушающего tcp порт
+
+  ```bash
+   sudo iptables -nL -t nat
+   ps ax | grep docker-proxy 
+  ```
+
+##docker-compose
+
+- Установлен docker-compose version 1.24.0
+
+- Выполнен запуск проекта с использованием docker-compose
+
+  ```bash
+  docker kill $(docker ps -q)
+  
+  export USERNAME=<docker_hub_login>
+  cd src
+  docker-compose up -d
+  ```
+
+  Посмотреть список контейнеров `docker-compose ps`
+
+  Проверка http://< docker-machine-ip >:9292/
+
+- Выполнена корректировка docker-compose на множество сетей, сетевых алиасов
+
+- Выполнена параметризация docker-compose.yml переменными, указанными в файле `src/.env` в формате `VAR=VAL` 
+
+  https://docs.docker.com/compose/env-file/
+
+- Наименованием проекта по умолчанию является `basename` директории в которой находится `docker-compose.yml`, изменить наименование проекта можно следующими способами:
+
+  1. Переменной `COMPOSE_PROJECT_NAME` в файле `.env`. Пример `COMPOSE_PROJECT_NAME=docker4`
+  
+  2. Опцией docker-compose `-p, --project-name NAME`. Пример `docker-compose -p docker4 up -d`
+  
+     https://docs.docker.com/compose/reference/envvars/
+
+## Задание со *
+
+1. Обеспечить изменение кода каждого из приложений, не выполняя сборку образа:
+
+   Смонтировать код приложений из соответствующих директорий `comment` `post-py` `ui` в `/app` через опцию  `volumes: ...`
+
+   Примечание: т.к. кода на docker-host нет, нужно его туда сначала скопировать, либо монтировать локальную директорию на docker-host. 
+
+   PS: 
+
+   - docker-machine mount `cd src; docker-machine mount docker-host:/app ./`, использующий SSHFS, монтирует удаленную директорию в локальную, а не оборот, в прочем как и sshfs. Не умеет монтировать в не пустую директорию и выдает ошибку: "fuse: if you are sure this is safe, use the 'nonempty' mount option". 
+   - т.е. нужно монтировать с использованием sshfs + ssh forwarding  (reverse sshfs ) https://superuser.com/questions/616182/how-to-mount-local-directory-to-remote-like-sshfs
+
+2. Обеспечить запуск puma для руби приложений в дебаг режиме с двумя воркерами (флаги --debug и -w 2):
+
+   Переопределить директиву CMD докер образов с ruby приложениями опцией `command: ...` 
+
+Результат зафиксирован в файле `src/docker-compose.override.yml`
+
+Запустить проект
+
+- Вариант с копированием кода на удаленную машину
+
+```bash
+cd src/
+docker-machine ssh docker-host "sudo mkdir /app; sudo chown -R docker-user /app"
+docker-machine scp -r -d ./ docker-host:/app/
+docker-machine ssh docker-host "chmod a-x /app/post-py/*.py"
+docker-compose -f docker-compose.override.yml up -d
+
+```
+
+- вариант с монтированием локальной директории на удаленную машину (reverse sshfs )
+```bash
+# создать точку монтирования
+localmachine$ уdocker-machine ssh docker-host "sudo mkdir /app"
+# ssh forwarding
+localmachine$ ssh docker-user@$(docker-machine ip docker-host) -i ~/.docker/machine/machines/docker-host/id_rsa -R 10000:localhost:22
+# mount sshfs
+remotemachine$ sudo sshfs -p 10000 -o allow_other <local_user_name>@localhost:/path/to/src /app
+
+# в соседней сессии запусть контейнеры
+localmachine$ cd src/; docker-compose -f docker-compose.override.yml up -d
+
+#------------
+# закончить тест
+localmachine$ docker-compose -f docker-compose.override.yml down
+remotemachine$ sudo fusermount -uz /app
+```
+
+PS: файлы .py не д.б. исполняемые, иначе будет ошибка при старте контейнера `cd src/; chmod -R a-x post-py/*.py`
