@@ -1,0 +1,13 @@
+plugin: gcp_compute
+projects:
+  - docker-otus-201905
+filters:
+auth_kind: serviceaccount
+# путь от директории в которой выполняется ansible-playbook
+service_account_file: ./secure/gcp-serviceaccount-view-resources-docker-otus-201905.json
+groups:
+  gitlab: "'gitlab' in name"
+cache: true
+cache_timeout: 3600
+cache_plugin: yaml
+cache_connection: /tmp/ansible-inventory-cache
