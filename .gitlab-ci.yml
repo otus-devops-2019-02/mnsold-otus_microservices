@@ -16,6 +16,7 @@ before_script:
 
 build_job:
   stage: build
+  image: docker:stable
   script:
     - docker build -t $DOCKER_REPO_USER/reddit reddit/
     - docker login -u $DOCKER_REPO_USER -p $DOCKER_REPO_PASS
