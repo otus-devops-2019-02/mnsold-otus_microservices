@@ -10,13 +10,13 @@ mnsold-otus microservices repository
   ```bash
   docker --version
   Docker version 18.06.3-ce, build d7080c1
-  
+
   docker-compose version
   docker-compose version 1.24.0, build 0aa59064
   docker-py version: 3.7.2
   CPython version: 3.6.8
   OpenSSL version: OpenSSL 1.1.0j  20 Nov 2018
-  
+
   docker-machine version
   docker-machine version 0.16.0, build 702c267f
   ```
@@ -27,7 +27,7 @@ mnsold-otus microservices repository
 
 - Создали контейнер, вошли в bash `docker run -it ubuntu:16.04 /bin/bash` и создали там файл, затем создали еще один контейнер аналогичной командой, созданого файла там нет, т.к. мы не запустили ранее созданный контейнер, создали новый директивой `run`
 
-- Запустили ранее созданный контейнер через conteqner_id командой`docker start container_id` 
+- Запустили ранее созданный контейнер через conteqner_id командой`docker start container_id`
 
 - Подключились к терминалу директивой `docker attach container_id` , вышли из контейнера не останавливая его `Ctrl+p`, `Ctrl+q`
 
@@ -61,7 +61,7 @@ docker-machine create --driver google \
     --google-zone europe-west1-b \
     docker-host
 
-# список хостов docker-machine 
+# список хостов docker-machine
 docker-machine ls
 
 # указать окружение хоста docker-machine c установленным docker-engine, с которым будем работать
@@ -142,12 +142,12 @@ ansible-playbook playbooks/main-site.yml
   Прейти по ссылке http://<terraform output http_lb_external_ip>:9292
 
 - Примечание:
-  
+
   Т.к. используется динамический инвентори, который возвращает docker-machine в GCP и которой не должны применяться плейбуки, то
-  
+
   - все хосты проекта должны быть определены в инвентори
   - в плейбуках указано не применять к хостам, которые находятся не в группах `hosts: all:!ungrouped`, либо указывается конкретная кгруппа к которой требуется применять плейбук, чтобы плейбуки не применяись к docker-machine и обходили этот хост стороной
-  
+
   PS: ! В последующем, точнее в ДЗ №19, отказался от `hosts: all:!ungrouped`, если нужно, чтобы ansible не выполнялся на не нужных хостах, нужно добавить ключ `-l <название группы>|<название хоста>`, в данном случае нужно использовать название группы `app`
 
 ### Образ packer'а с установленным docker
@@ -241,7 +241,7 @@ mnsoldotus/ui:1.0
 
 ```
 
-- Выполнено улучшение образа `ui`: 
+- Выполнено улучшение образа `ui`:
 
   - Вариант 1. на основе базового образа `ubuntu:16.04` (см коммит файла `src/ui/Dockerfile`)
   - Вариант 2. на основе базового образа `alpine:3.9` (см файл `src/ui/Dockerfile)
@@ -261,7 +261,7 @@ mnsoldotus/ui:1.0
   docker network create back_net  --subnet=10.0.2.0/24
   docker network create front_net --subnet=10.0.1.0/24
   ```
-  
+
 - Созданы контейнеры в разных сетях
   ```bash
   docker run -d --network=back_net --network-alias=post_db --network-alias=comment_db  --name mongo_db mongo:latest
@@ -273,11 +273,11 @@ mnsoldotus/ui:1.0
   Выполнено онлайн подключение контейнеров к сети
 
   ```bash
-  docker network connect front_net post 
-  docker network connect front_net comment 
+  docker network connect front_net post
+  docker network connect front_net comment
   ```
-  
-- Рассмотрены сетевые интерфейсы со стороны хостовой машины 
+
+- Рассмотрены сетевые интерфейсы со стороны хостовой машины
 
   ```bash
   docker network ls
@@ -290,7 +290,7 @@ mnsoldotus/ui:1.0
 
   ```bash
    sudo iptables -nL -t nat
-   ps ax | grep docker-proxy 
+   ps ax | grep docker-proxy
   ```
 
 ##docker-compose
@@ -301,7 +301,7 @@ mnsoldotus/ui:1.0
 
   ```bash
   docker kill $(docker ps -q)
-  
+
   export USERNAME=<docker_hub_login>
   cd src
   docker-compose up -d
@@ -313,16 +313,16 @@ mnsoldotus/ui:1.0
 
 - Выполнена корректировка docker-compose на множество сетей, сетевых алиасов
 
-- Выполнена параметризация docker-compose.yml переменными, указанными в файле `src/.env` в формате `VAR=VAL` 
+- Выполнена параметризация docker-compose.yml переменными, указанными в файле `src/.env` в формате `VAR=VAL`
 
   https://docs.docker.com/compose/env-file/
 
 - Наименованием проекта по умолчанию является `basename` директории в которой находится `docker-compose.yml`, изменить наименование проекта можно следующими способами:
 
   1. Переменной `COMPOSE_PROJECT_NAME` в файле `.env`. Пример `COMPOSE_PROJECT_NAME=docker4`
-  
+
   2. Опцией docker-compose `-p, --project-name NAME`. Пример `docker-compose -p docker4 up -d`
-  
+
      https://docs.docker.com/compose/reference/envvars/
 
 ## Задание со *
@@ -331,16 +331,16 @@ mnsoldotus/ui:1.0
 
    Смонтировать код приложений из соответствующих директорий `comment` `post-py` `ui` в `/app` через опцию  `volumes: ...`
 
-   Примечание: т.к. кода на docker-host нет, нужно его туда сначала скопировать, либо монтировать локальную директорию на docker-host. 
+   Примечание: т.к. кода на docker-host нет, нужно его туда сначала скопировать, либо монтировать локальную директорию на docker-host.
 
-   PS: 
+   PS:
 
-   - docker-machine mount `cd src; docker-machine mount docker-host:/app ./`, использующий SSHFS, монтирует удаленную директорию в локальную, а не оборот, в прочем как и sshfs. Не умеет монтировать в не пустую директорию и выдает ошибку: "fuse: if you are sure this is safe, use the 'nonempty' mount option". 
+   - docker-machine mount `cd src; docker-machine mount docker-host:/app ./`, использующий SSHFS, монтирует удаленную директорию в локальную, а не оборот, в прочем как и sshfs. Не умеет монтировать в не пустую директорию и выдает ошибку: "fuse: if you are sure this is safe, use the 'nonempty' mount option".
    - т.е. нужно монтировать с использованием sshfs + ssh forwarding  (reverse sshfs ) https://superuser.com/questions/616182/how-to-mount-local-directory-to-remote-like-sshfs
 
 2. Обеспечить запуск puma для руби приложений в дебаг режиме с двумя воркерами (флаги --debug и -w 2):
 
-   Переопределить директиву CMD докер образов с ruby приложениями опцией `command: ...` 
+   Переопределить директиву CMD докер образов с ruby приложениями опцией `command: ...`
 
 Результат зафиксирован в файле `src/docker-compose.override.yml`
 
@@ -418,27 +418,27 @@ ansible-playbook playbooks/gitlab.yml -l 'gitlab' -vvv
 - Регистрируем Runner в настройках проекта, разделе CI/CD -> Runners,
 
   - В "Set up a specific Runner manually" запоминаем токен
-  
+
   - На хосте с GitLAB запускаем контейнер с Runner
-  
+
     ```bash
     ssh appuser@35.205.50.178 -i ~/.ssh/appuser
-    
+
     docker run -d --name gitlab-runner --restart always \
     -v /srv/gitlab-runner/config:/etc/gitlab-runner \
     -v /var/run/docker.sock:/var/run/docker.sock \
     gitlab/gitlab-runner:latest
-    
+
     ```
-  
+
     !!! Если нужно собирать docker images:
-  
+
     - контейнер gitlab-runner д.б. запущен с опцией `--privileged`
-  
+
     - в файл конфигурационный файл runner вписать что он работает в привилигированном режиме
-  
+
       https://docs.gitlab.com/runner/executors/docker.html#use-docker-in-docker-with-privileged-mode
-  
+
       ```bash
       nano /srv/gitlab-runner/config/config.toml
       ------
@@ -453,23 +453,23 @@ ansible-playbook playbooks/gitlab.yml -l 'gitlab' -vvv
           ...
       ------
       ```
-  
-      
-  
+
+
+
   - Регистрируем Runner
-  
+
     ```bash
     ssh appuser@35.205.50.178 -i ~/.ssh/appuser
-    
+
     docker exec -it gitlab-runner gitlab-runner register --run-untagged --locked=false
     ```
-  
+
     При регистрации указываем
-  
+
     ```properties
     Runtime platform                                    arch=amd64 os=linux pid=11 revision=5a147c92 version=11.11.1
     Running in system-mode.
-    
+
     Please enter the gitlab-ci coordinator URL (e.g. https://gitlab.com/):
     http://35.205.50.178/
     Please enter the gitlab-ci token for this runner:
@@ -484,9 +484,9 @@ ansible-playbook playbooks/gitlab.yml -l 'gitlab' -vvv
     Please enter the default Docker image (e.g. ruby:2.1):
     alpine:latest
     Runner registered successfully. Feel free to start it, but if it's running already the config should be automatically reloaded!
-    
+
     ```
-  
+
     В этом разделе увидим зарегистрированный Runner
 
 
@@ -523,8 +523,8 @@ ansible-playbook playbooks/gitlab.yml -l 'gitlab' -vvv
   production:
     stage: production
     when: manual
-    only: 
-      - /^\d+\.\d+\.\d+/ 
+    only:
+      - /^\d+\.\d+\.\d+/
     script:
       - echo 'Deploy'
     environment:
@@ -553,7 +553,7 @@ ansible-playbook playbooks/gitlab.yml -l 'gitlab' -vvv
 
   Некоторое раскрытие работы используемых переменных CI https://docs.gitlab.com/ee/ci/environments.html#example-configuration
 
-  
+
 
 ## Задание со * (стр 48)
 
@@ -565,7 +565,7 @@ ansible-playbook playbooks/gitlab.yml -l 'gitlab' -vvv
 
   Директива `before_script: []` внутри этапа позволит переопределить before_script объявленный на уровне pipeline.
 
-  Пригодится! 
+  Пригодится!
 
   Деплой через ssh https://medium.com/@codingfriend/continuous-integration-and-deployment-with-gitlab-docker-compose-and-digitalocean-6bd6196b502a
 
@@ -577,7 +577,7 @@ ansible-playbook playbooks/gitlab.yml -l 'gitlab' -vvv
 
   1) http://qaru.site/questions/2440757/role-of-docker-in-docker-dind-service-in-gitlab-ci
 
-  2) https://docs.gitlab.com/ce/ci/docker/using_docker_build.html#use-docker-in-docker-executor 
+  2) https://docs.gitlab.com/ce/ci/docker/using_docker_build.html#use-docker-in-docker-executor
 
   Докер в докере и привилегированный режим (контейнер gitlab-runner д.б. запущен с опцией `--privileged`) https://docs.gitlab.com/runner/executors/docker.html#use-docker-in-docker-with-privileged-mode
 
@@ -593,11 +593,11 @@ ansible-playbook playbooks/gitlab.yml -l 'gitlab' -vvv
 - Настраиваем Gitlab для выполнения деплоя через ssh
 
   Для этого создаем переменные в настройках проекта CI
-  
+
   - переменную `CI_PRIVATE_KEY` с приватным ключом аналогичным `~/.ssh/appuser`
   - переменную `CI_USER` с именем пользователя
   - переменную `HOST` с IP адресом выделенного сервера
-  
+
 - Корректируем задание deploy_dev_job в pipeline этапа review в `mnsold-otus_microservices\.gitlab-ci.yml`
 
 - Для проверки перейти по адресу http://IP_GCP:9292 (или нажать кнопку " View deployment" в Environments в разделе Operations проекта)
@@ -622,16 +622,16 @@ GITLAB_RUNNER_EXECUTOR="docker"
 GITLAB_RUNNER_DOCKER_IMAGE="gitlab/gitlab-runner:latest"
 GITLAB_RUNNER_TAG_LIST_COMMA="docker"
 
-for ((i=1;i<=$GITLAB_RUNNER_CONTEINER_COUNT;i++)); do 
+for ((i=1;i<=$GITLAB_RUNNER_CONTEINER_COUNT;i++)); do
     GITLAB_RUNNER_CONTEINER_NAME=$GITLAB_RUNNER_CONTEINER_PREFIX$i
-    
+
     echo "Create container: $GITLAB_RUNNER_CONTEINER_NAME"
-    
+
     sudo docker run -d --name $GITLAB_RUNNER_CONTEINER_NAME --restart always \
         -v /srv/gitlab-runner/config:/etc/gitlab-runner \
         -v /var/run/docker.sock:/var/run/docker.sock \
         gitlab/gitlab-runner:latest
-    
+
     sudo docker exec -it $GITLAB_RUNNER_CONTEINER_NAME gitlab-runner register \
         --non-interactive \
         --url "$GITLAB_SERVER_URL" \
@@ -665,7 +665,7 @@ Runner registered successfully. Feel free to start it, but if it's running alrea
 
 ```
 
-- Интеграция Pipeline с тестовым Slack-чатом
+- Интеграция Pipeline с тестовым Slack чатом
 
   - В настройках проекта, разделе Integration, идем в сервис "Slack notifications"
   - Согласно предложению сервиса "Slack notifications" выполнить настройку по добавлению webhook (Add an incoming webhook), делаем это, переходим по предоставленной GitLab ссылке, добавляем конфигурацию,  выбираем канал уведомления
