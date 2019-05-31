@@ -665,7 +665,7 @@ Runner registered successfully. Feel free to start it, but if it's running alrea
 
 ```
 
-- Интеграция Pipeline с тестовым Slack чатом
+- Интеграция Pipeline с тестовым Slack-чатом
 
   - В настройках проекта, разделе Integration, идем в сервис "Slack notifications"
   - Согласно предложению сервиса "Slack notifications" выполнить настройку по добавлению webhook (Add an incoming webhook), делаем это, переходим по предоставленной GitLab ссылке, добавляем конфигурацию,  выбираем канал уведомления
