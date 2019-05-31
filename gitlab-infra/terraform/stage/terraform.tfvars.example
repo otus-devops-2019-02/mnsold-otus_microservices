@@ -1,0 +1,7 @@
+project = "your_project_id"
+public_key_path = "~/.ssh/appuser.pub"
+app_disk_image = "ubuntu-minimal-1804-lts"
+private_key_path = "~/.ssh/appuser"
+ci_user_name = "ci"
+ci_user_pass = "ci_long_password"
+ci_user_group_list = "docker"

@@ -1,7 +1,7 @@
 ---
 # установка питона
 - name: Check && install python
-  hosts: all:!ungrouped
+  hosts: all
   become: true
   gather_facts: False
 

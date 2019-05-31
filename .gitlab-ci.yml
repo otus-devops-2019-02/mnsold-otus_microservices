@@ -26,6 +26,7 @@ build_job:
     - docker info
     - docker login -u $DOCKER_REPO_USER -p $DOCKER_REPO_PASS
   script:
+    - echo 'Build'
     - docker build -t $DOCKER_REPO_USER/reddit reddit/
     - docker push $DOCKER_REPO_USER/reddit
 
@@ -45,9 +46,14 @@ deploy_dev_job:
   stage: review
   script:
     - echo 'Deploy'
+    - echo "$CI_PRIVATE_KEY" | tr -d '\r' > /tmp/.id_rsa
+    - chmod 600 /tmp/.id_rsa
+    - eval "$(ssh-agent -s)"
+    - ssh-add /tmp/.id_rsa
+    - ssh -o stricthostkeychecking=no $CI_USER@$HOST sudo docker run -d --restart unless-stopped --log-driver json-file --log-opt max-size=200m -p 9292:9292 --name reddit $DOCKER_REPO_USER/reddit
   environment:
     name: dev
-    url: http://dev.example.com
+    url: http://$HOST:9292
 
 branch review:
   stage: review
