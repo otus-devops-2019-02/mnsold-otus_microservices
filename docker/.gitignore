@@ -1,0 +1,5 @@
+## python specific
+*.pyc
+
+# docker-compose
+.env
