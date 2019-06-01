@@ -1,0 +1,18 @@
+---
+- import_playbook: base.yml
+- import_playbook: docker.yml
+
+- name: palybook gitlab-ce
+  hosts: gitlab
+  become: true
+
+  tasks:
+  - name: Show facts server
+    tags: facts
+    debug:
+      msg: Gitlab IP={{ item }}
+    with_items:
+      - "{{ gitlab_ip }}"
+
+  roles:
+    - {role: gitlab, tags: [ 'deploy']}

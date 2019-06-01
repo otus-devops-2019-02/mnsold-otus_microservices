@@ -1,0 +1,32 @@
+---
+# установка питона
+- name: Check && install python
+  hosts: all
+  become: true
+  gather_facts: False
+
+  tasks:
+    - name: Install python for Ansible
+      raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+      changed_when: true
+
+    - name: Install python additional packages
+      apt:
+        name: "{{ packages }}"
+        state: present
+      changed_when: true
+      vars:
+        packages:
+          - python-pip
+          - python-apt
+
+    - name: Install python pip additional packages
+      pip:
+        name: "{{ pip_packages }}"
+        state: present
+      changed_when: true
+      vars:
+        pip_packages:
+          - python-apt
+          - docker
+          - docker-compose

@@ -1,0 +1,33 @@
+---
+# tasks file for gitlab
+
+- name: Create gitlab config directory
+  file:
+    path: "{{ gitlab_dir_config }}"
+    state: directory
+    mode: 0775
+    recurse: yes
+
+- name: Create gitlab logs directory
+  file:
+    path: "{{ gitlab_dir_logs }}"
+    state: directory
+    mode: 0775
+    recurse: yes
+
+- name: Create gitlab data directory
+  file:
+    path: "{{ gitlab_dir_data }}"
+    state: directory
+    mode: 0775
+    recurse: yes
+
+- name: Copy gitlab compose file
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ gitlab_dir_project }}/docker-compose.yml"
+    mode: 0644
+
+- name: Start GitLAB
+  docker_service:
+    project_src: "{{ gitlab_dir_project }}"

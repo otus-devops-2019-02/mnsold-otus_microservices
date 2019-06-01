@@ -1,0 +1,6 @@
+---
+# defaults file for gitlab
+gitlab_dir_project: /srv/gitlab
+gitlab_dir_config: /srv/gitlab/config
+gitlab_dir_logs: /srv/gitlab/logs
+gitlab_dir_data: /srv/gitlab/data

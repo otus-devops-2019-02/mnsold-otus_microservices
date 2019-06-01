@@ -1,0 +1,19 @@
+# имя файла должно называтьтся как имя группы в инвентори
+
+# docker
+docker_edition: 'ce'
+# в readme роли приведен формат docker_package:
+# без версии пакета, с версией в зависимости от ОС RH/Debian based
+docker_package: "docker-{{ docker_edition }}=18.06*"
+docker_package_state: present
+docker_service_state: started
+docker_service_enabled: true
+docker_restart_handler_state: restarted
+docker_install_compose: true
+docker_compose_version: "1.24.0"
+docker_install_machine: false
+docker_users:
+  - appuser
+
+# факты
+gitlab_ip: "{{ hostvars[groups['gitlab'][0]]['networkInterfaces'][0]['accessConfigs'][0]['natIP'] }}"
