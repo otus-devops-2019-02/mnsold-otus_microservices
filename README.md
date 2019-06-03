@@ -675,3 +675,161 @@ Runner registered successfully. Feel free to start it, but if it's running alrea
   - Активируем сервис "Slack notifications"
 
   Канал интеграции слаки https://devops-team-otus.slack.com/messages/CH2FT5W87
+
+
+
+# ДЗ №20
+
+- Создали правило фаервола для Prometheus и Puma: 
+
+  ```bash
+  gcloud compute firewall-rules create prometheus-default --allow tcp:9090
+  gcloud compute firewall-rules create puma-default --allow tcp:9292
+  ```
+
+- С использованием docker-machine создали хост
+
+  ```bash
+  export GOOGLE_PROJECT=<GCP_PROJECT>
+  
+  ```
+
+docker-machine create --driver google \
+  --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
+  --google-machine-type n1-standard-1 \
+  --google-zone europe-west1-b \
+  docker-host
+
+  eval $(docker-machine env docker-host)
+
+```
+  
+- Запускаем prometeus для начального знакомства (есть опция --rm)
+
+  ```bash
+  docker run --rm -p 9090:9090 -d --name prometheus prom/prometheus:v2.1.0
+```
+
+  После знакомства контейнер был удален
+
+- Подготовили директории для последующего задания
+
+  - созданы директории `docker/` `monitoring/`
+  - в директорию `docker/ `перенесена директория `docker-monolith/`, из `src/` скопированы файлы docker-compose.yml и .env*
+  - Т.к. с этого момента сборка сервисов отделена от docker-compose, инструкции build удалены из docker-compose.yml
+
+- Подготовили и запустили простой образ prometheus со своим конигурационным файлом для сбора метрик в директории monitoring/prometheus/
+
+  ```
+  cd monitoring/prometheus/
+  docker build -t mnsoldotus/prometheus .
+  ```
+
+- Т.к. сборка образов отделена от docker-compose, сборку теперь выполняется через файлы `docker_build.sh`, размещенный в каждом сервисе директории `src/`
+
+  ```bash
+  #GitHub username
+  export USER_NAME=mnsoldotus
+  
+  cd src/comment; ./docker_build.sh
+  cd src/post-py; ./docker_build.sh
+  cd src/ui; ./docker_build.sh
+  
+  ```
+
+- По ДЗ поднимаем Prometheus совместно с микросервисами, для этого в файл `docker\docker-compose.yml` добавляем секцию `prometheus:` и volume к нему
+
+- Поднимаем сервисы `docker-compose up -d`, сервис д.б. доступен по адресу `http://GCP_IP:9292`, смотрим в раздел target в prometheus, сервисы д.б. в состоянии `UP`
+
+  ! Заметка и контекстном пути по которому собираются метрики:
+
+  При проверке end-points в target было обнаружено, что сбор метрик в сервисах идет по пути `http://service:port/metrics`, но если посмотреть в файл `monitoring/prometheus/prometheus.yml`, то увидим, что в файле, в разделе target, определен только хост:порт, и ничего не сказано о контекстном пути, по которому доступны метрики.
+
+- В интерфейсе prometheus посмотрели не доступность сервиса `ui`, выполнили поиск проблемы, для этого сделали: остановили сервис `post`, сервис `ui` проверят сервисы от которых зависит и метрика `ui_health` сервиса `ui` стала показывать о своей не доступности, посмотрели метрику `ui_health_post_availability` сервиса `post`, обнаружили, что сервис стал не доступен в это же время, подняли сервис `post`,  сервис `ui` так же стал доступен.
+
+- Добавил экспортер `node-exporter` в сервисы приложения `docker/docker-compose.yml` и задание для него в  prometheus  в `monitoring/prometheus/prometheus.yml`, пересобрали докер prometheus, перезапустили сервисы
+
+- Ссылка на докерхаб с образами https://cloud.docker.com/u/mnsoldotus/repository
+
+  
+
+## Задание со * (стр 49)
+
+- Создал докер образ `mnsoldotus/prometheus_mongodb_exporter`на основе https://github.com/percona/mongodb_exporter
+
+  ```bash
+  monitoring/mongodb_exporter/docker_build.sh
+  ```
+
+- Добавил экспортер `mongodb-exporter` в сервисы приложения `docker/docker-compose.yml` и задание для него в  prometheus  в `monitoring/prometheus/prometheus.yml`, пересобрал докер prometheus, перезапустили сервисы
+
+  ```bash
+  export USER_NAME=mnsoldotus
+  
+  docker build -t $USER_NAME/prometheus monitoring/prometheus
+  
+  cd docker
+  docker-compose down
+  docker-compose up -d
+  ```
+
+  В таргетах prometheus появилось задание `mongodb (1/1 up)`, значения хранятся в метриках `mongodb_*`. Метрика `mongodb_up` показывает:
+
+  ```
+  Element                                                     Value
+  mongodb_up{instance="mongodb-exporter:9216",job="mongodb"}	1
+  ```
+
+## Задание со * (стр 50)
+
+- Добавил экспортер `blackbox-exporter` на основе https://github.com/prometheus/blackbox_exporter
+
+  Сервис экпортера в файле`docker/docker-compose.yml`, задание в  prometheus  в файле `monitoring/prometheus/prometheus.yml`, пересобрал докер prometheus, перезапустил сервисы
+
+  В таргетах prometheus появилось задание `blackbox (3/3 up)`, значения хранятся в метриках `probe_*`. Метрика `probe_http_status_code` показывает:
+
+  ```json
+  Element 	                                                            Value
+  probe_http_status_code{instance="http://comment:9292",job="blackbox"}	404
+  probe_http_status_code{instance="http://post:5000",job="blackbox"}	    404
+  probe_http_status_code{instance="http://ui:9292",job="blackbox"}	    200
+  ```
+
+  В корне приложения `comment` и `post` ничего нет, нужно мониторить какой то контекстный путь, например `/healthcheck`, но для теста самое то, когда видно, что что-то не доступно.
+
+  Список метрик:
+
+  ​	probe_dns_lookup_time_seconds
+  ​	probe_duration_seconds
+  ​	probe_failed_due_to_regex
+  ​	probe_http_content_length
+  ​	probe_http_duration_seconds
+  ​	probe_http_redirects
+  ​	probe_http_ssl
+  ​	probe_http_status_code
+  ​	probe_http_version
+  ​	probe_ip_protocol
+  ​	probe_success
+
+  Пригодится:
+
+  - blackbox_exporter https://github.com/prometheus/blackbox_exporter
+
+  - Пример использования blackbox_exporter https://rtfm.co.ua/prometheus-alertmanager-i-blackbox-exporter-proverka-sroka-dejstviya-ssl-i-notifikaciya-v-slack/
+
+  - Пример использования blackbox_exporter  https://medium.com/the-telegraph-engineering/how-prometheus-and-the-blackbox-exporter-makes-monitoring-microservice-endpoints-easy-and-free-of-a986078912ee
+
+## Задание со * (стр 51)
+
+- Добавлен Makefile
+
+  ```bash
+  cd docker
+  
+  # собрать и запушить образ, на примере образа prometheus
+  make docker-build-prometheus
+  make docker-push-prometheus
+  
+  # собрать и запушить все образы
+  make all
+  ```
