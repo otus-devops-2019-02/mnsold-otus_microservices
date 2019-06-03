@@ -51,6 +51,11 @@ services:
     networks:
       - back_net
 
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.14.0
+    networks:
+      - front_net
+
   ui:
     image: ${USERNAME}/ui:${APP_UI_VERSION}
     ports:
