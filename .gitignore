@@ -11,5 +11,8 @@
 *.tfvars
 .terraform/
 
+# docker-compose
+.env
+
 # other
 secure
