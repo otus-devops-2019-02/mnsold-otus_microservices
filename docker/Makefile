@@ -1,7 +1,7 @@
 #!make
 export USER_NAME=mnsoldotus
 
-all : docker-build-comment docker-push-comment docker-build-post docker-push-post docker-build-ui docker-push-ui docker-build-prometheus docker-push-prometheus docker-build-mongodb_exporter docker-push-mongodb_exporter
+all : docker-build-comment docker-push-comment docker-build-post docker-push-post docker-build-ui docker-push-ui docker-build-prometheus docker-push-prometheus docker-build-mongodb_exporter docker-push-mongodb_exporter docker-build-alertmanager docker-push-alertmanager
 
 .PHONY : all
 
@@ -44,3 +44,11 @@ docker-build-mongodb_exporter:
 
 docker-push-mongodb_exporter:
 	docker login && docker push $(USER_NAME)/prometheus_mongodb_exporter:v0.7.0
+
+######################################
+# PROMETHEUS ALERTMANAGER
+docker-build-alertmanager:
+	cd ../monitoring/alertmanager && docker build -t $(USER_NAME)/alertmanager .
+
+docker-push-alertmanager:
+	docker login && docker push $(USER_NAME)/alertmanager

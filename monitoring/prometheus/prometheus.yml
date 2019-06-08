@@ -54,3 +54,10 @@ scrape_configs:
     static_configs:
       - targets:
         - 'post:5000'
+
+ alertmanager:
+    image: ${USER_NAME}/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+    ports:
+      - 9093:9093
