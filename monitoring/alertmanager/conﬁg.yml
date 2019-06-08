@@ -7,4 +7,4 @@ route:
 receivers:
 - name: 'slack-notifications'
   slack_configs:
-  - channel: '#userchannel'
+  - channel: '#maksim_soldatov'
