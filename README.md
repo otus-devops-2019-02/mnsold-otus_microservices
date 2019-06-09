@@ -867,12 +867,11 @@ Runner registered successfully. Feel free to start it, but if it's running alrea
 - Запустили проект
 
   ```bash
-  export USER_NAME=mnsoldotus
   cd docker
   docker-compose up -d
   docker-compose -f docker-compose-monitoring.yml up -d
   ```
-
+  
 - Исследовали интерфейс cAdvisor, увидели, что cAdvisor по пути `/metrics` предоставляет метрики в формате prometheus и начинаются они с `container_`, посмотрели метрики c cAdvisor в prometheus
 
 - Добавили сервис Grafana в `docker/docker-compose-monitoring.yml`
@@ -958,12 +957,11 @@ docker-machine ssh docker-host
 - Поднимаем сервисы
 
   ```bash
-  export USER_NAME=mnsoldotus
   cd docker
   docker-compose up -d
   docker-compose -f docker-compose-monitoring.yml up -d
   ```
-
+  
 - В интерфейсе prometheus появятся метрики`engine_daemon_`
 
   По количеству и главное по составу, сильно уступает метрикам cAdvisor (начинаются с `container_`).
@@ -987,12 +985,11 @@ https://github.com/influxdata/telegraf/tree/master/plugins/outputs/prometheus_cl
 - Поднимаем сервисы
 
   ```bash
-  export USER_NAME=mnsoldotus
   cd docker
   docker-compose up -d
   docker-compose -f docker-compose-monitoring.yml up -d
   ```
-
+  
 - В интерфейсе prometheus появятся метрики`docker_container_` `docker_n_`, весь перечень метрик доступен по ссылке https://github.com/influxdata/telegraf/tree/master/plugins/inputs/docker
 
   Количество метрик значительно больше чем в cAdvisor. Готовых дашбордов к Grafana для Telegraf:Docker от источника Prometheus нет, есть только от источника InfluxDB.

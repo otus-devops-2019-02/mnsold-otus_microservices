@@ -2,7 +2,7 @@ version: '3.3'
 
 services:
   prometheus:
-    image: ${USER_NAME}/prometheus
+    image: ${USERNAME}/prometheus
     ports:
       - '9090:9090'
     volumes:
@@ -74,7 +74,7 @@ services:
       - back_net
 
   alertmanager:
-    image: ${USER_NAME}/alertmanager
+    image: ${USERNAME}/alertmanager
     command:
       - '--config.file=/etc/alertmanager/config.yml'
     ports:
@@ -83,7 +83,7 @@ services:
       - back_net
 
   telegraf:
-    image: ${USER_NAME}/telegraf
+    image: ${USERNAME}/telegraf
     volumes:
       - '/var/run/docker.sock:/var/run/docker.sock'
     ports:
