@@ -82,6 +82,16 @@ services:
     networks:
       - back_net
 
+  telegraf:
+    image: ${USER_NAME}/telegraf
+    volumes:
+      - '/var/run/docker.sock:/var/run/docker.sock'
+    ports:
+      - 9273:9273
+      - 8086:8086
+    networks:
+      - back_net
+
 volumes:
   prometheus_data:
   grafana_data:

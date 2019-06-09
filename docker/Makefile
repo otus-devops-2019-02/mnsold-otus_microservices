@@ -1,7 +1,7 @@
 #!make
 export USER_NAME=mnsoldotus
 
-all : docker-build-comment docker-push-comment docker-build-post docker-push-post docker-build-ui docker-push-ui docker-build-prometheus docker-push-prometheus docker-build-mongodb_exporter docker-push-mongodb_exporter docker-build-alertmanager docker-push-alertmanager
+all : docker-build-comment docker-push-comment docker-build-post docker-push-post docker-build-ui docker-push-ui docker-build-prometheus docker-push-prometheus docker-build-mongodb_exporter docker-push-mongodb_exporter docker-build-alertmanager docker-push-alertmanager docker-build-telegraf docker-push-telegraf
 
 .PHONY : all
 
@@ -52,3 +52,11 @@ docker-build-alertmanager:
 
 docker-push-alertmanager:
 	docker login && docker push $(USER_NAME)/alertmanager
+
+######################################
+# PROMETHEUS TELEGRAF
+docker-build-telegraf:
+	cd ../monitoring/telegraf && docker build -t $(USER_NAME)/telegraf .
+
+docker-push-telegraf:
+	docker login && docker push $(USER_NAME)/telegraf
