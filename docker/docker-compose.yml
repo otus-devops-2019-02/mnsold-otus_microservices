@@ -11,51 +11,6 @@ services:
         - post_db
         - comment_db
 
-  prometheus:
-    image: ${USERNAME}/prometheus
-    ports:
-      - '9090:9090'
-    volumes:
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention=1d'
-    networks:
-      - back_net
-      - front_net
-
-  node-exporter:
-    image: prom/node-exporter:v0.15.2
-    user: root
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
-    networks:
-      - back_net
-
-  mongodb-exporter:
-    image: mnsoldotus/prometheus_mongodb_exporter:v0.7.0
-    user: root
-    environment:
-      # кавычки не указывать в этом экспортере, т.е. если внутри контейнера запустить
-      # mongodb_exporter --test
-      # будет ошибка
-      #ERRO[0000] Cannot connect to server using url "mongodb://post_db:27017": no reachable servers  source="connection.go:84"
-      - MONGODB_URI=mongodb://post_db:27017
-    networks:
-      - back_net
-
-  blackbox-exporter:
-    image: prom/blackbox-exporter:v0.14.0
-    networks:
-      - front_net
-
   ui:
     image: ${USERNAME}/ui:${APP_UI_VERSION}
     ports:
@@ -77,7 +32,6 @@ services:
 
 volumes:
   post_db:
-  prometheus_data:
 
 networks:
   back_net:

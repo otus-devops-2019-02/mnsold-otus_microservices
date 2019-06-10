@@ -692,23 +692,21 @@ Runner registered successfully. Feel free to start it, but if it's running alrea
   ```bash
   export GOOGLE_PROJECT=<GCP_PROJECT>
   
+  docker-machine create --driver google \
+    --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
+    --google-machine-type n1-standard-1 \
+    --google-zone europe-west1-b \
+    docker-host
+  
+  eval $(docker-machine env docker-host)
   ```
 
-docker-machine create --driver google \
-  --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
-  --google-machine-type n1-standard-1 \
-  --google-zone europe-west1-b \
-  docker-host
-
-  eval $(docker-machine env docker-host)
-
-```
-  
 - Запускаем prometeus для начального знакомства (есть опция --rm)
 
   ```bash
   docker run --rm -p 9090:9090 -d --name prometheus prom/prometheus:v2.1.0
-```
+  ```
+
 
   После знакомства контейнер был удален
 
@@ -718,11 +716,11 @@ docker-machine create --driver google \
   - в директорию `docker/ `перенесена директория `docker-monolith/`, из `src/` скопированы файлы docker-compose.yml и .env*
   - Т.к. с этого момента сборка сервисов отделена от docker-compose, инструкции build удалены из docker-compose.yml
 
-- Подготовили и запустили простой образ prometheus со своим конигурационным файлом для сбора метрик в директории monitoring/prometheus/
+- Подготовили и запустили простой образ prometheus со своим конигурационным файлом для сбора метрик в директории monitoring/prometheus
 
-  ```
-  cd monitoring/prometheus/
-  docker build -t mnsoldotus/prometheus .
+  ```bash
+    cd monitoring/prometheus/
+    docker build -t mnsoldotus/prometheus .
   ```
 
 - Т.к. сборка образов отделена от docker-compose, сборку теперь выполняется через файлы `docker_build.sh`, размещенный в каждом сервисе директории `src/`
@@ -833,3 +831,165 @@ docker-machine create --driver google \
   # собрать и запушить все образы
   make all
   ```
+
+# ДЗ №21
+
+- Вынесли правила мониторинга в файл `docker/docker-compose-monitoring.yml`
+
+- Создали правило фаервола для cAdvisor: 
+
+  ```bash
+  gcloud compute firewall-rules create cadviser-default --allow tcp:8080
+  ```
+  
+- С использованием docker-machine создали хост
+
+  ```bash
+  export GOOGLE_PROJECT=<GCP_PROJECT>
+  
+  docker-machine create --driver google \
+    --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
+    --google-machine-type n1-standard-1 \
+    --google-zone europe-west1-b \
+    docker-host
+  
+    eval $(docker-machine env docker-host)
+  
+  ```
+  
+- Добавили мониторинг контейнеров с помощью cAdvisor (файлы `docker/docker-compose-monitoring.yml` `monitoring/prometheus/prometheus.yml`, пересобрали образ prometheus 
+
+  ```bash
+  cd docker
+  make docker-build-prometheus
+  ```
+
+- Запустили проект
+
+  ```bash
+  cd docker
+  docker-compose up -d
+  docker-compose -f docker-compose-monitoring.yml up -d
+  ```
+  
+- Исследовали интерфейс cAdvisor, увидели, что cAdvisor по пути `/metrics` предоставляет метрики в формате prometheus и начинаются они с `container_`, посмотрели метрики c cAdvisor в prometheus
+
+- Добавили сервис Grafana в `docker/docker-compose-monitoring.yml`
+
+  ```bash
+  gcloud compute firewall-rules create grafana-default --allow tcp:3000
+  
+  cd docker
+  docker-compose -f docker-compose-monitoring.yml up -d grafana
+  ```
+
+- В grafana сделали:
+
+  - добавили источник типа ` Prometheus` 
+  
+  - на сайте выбрали наиболее популярный дашбоард для datasource=prometheus & category=docker, выбор пал на этот дашбоард https://grafana.com/dashboards/893 , сохранили с сайта json дашбоадра в `monitoring/grafana/dashboards/DockerMonitoring.json`
+  
+  - импортировали дашбоард из сохраненного json файла
+  
+  - Создали дашбоард UI_service_monitoring, добавили в него графики, использовали функции `rate ` и `histogram_quantile`
+  
+    ```properties
+    # UI HTTP Requsts
+    rate(ui_request_count[1m])
+    
+    # Rate of UI HTTP Requests with Error
+    rate(ui_request_count{http_status=~"^[45].*"}[1m])
+    ```
+  
+    Добавили график 95-й процентиль выборки времени обработки запросов
+  
+    ```properties
+    histogram_quantile(0.95, sum(rate(ui_request_response_time_bucket[5m])) by (le))
+    ```
+  
+  - Создали дашбоард Business_Logic_Monitoring, добавили в него графики
+  
+    ```properties
+    # Post count
+    rate(post_count[1h])
+    
+    # Comment count
+    rate(comment_count[1h])
+    ```
+  
+- Настройка оповещений в prometheus (alertmanager)
+
+  - Добавили в prometheus компонент alertmanager из образа ` prom/alertmanager:v0.14.0`
+  - Настроили Incoming  Webhook для отправки алертов в канал слаки https://devops-team-otus.slack.com/apps/A0F7XDUAZ-incoming-webhooks?page=1
+  - Добавили конфиг  `monitoring/alertmanager/conﬁg.yml` со slack-notifications
+  - Добавили сервис `alertmanager` в `docker/docker-compose-monitoring.yml`
+  - Собрали образ `make docker-build-alertmanager`
+
+
+
+## Задание со *
+
+**Добавить в Makefile сборку и публикацию сервисов этого ДЗ**
+
+Добавлено `docker-build-alertmanager` `docker-push-alertmanager`
+
+**Сбор метрик с Docker в формате Prometheus с использованием экспериментальной опции**
+
+https://docs.docker.com/config/thirdparty/prometheus/
+
+- Включаем опцию в докер
+
+  ```bash
+docker-machine ssh docker-host
+  
+  sudo nano /etc/docker/daemon.json
+  --------------------------------
+  {
+    "metrics-addr" : "0.0.0.0:9323",
+    "experimental" : true
+  }
+  --------------------------------
+  sudo systemctl restart docker
+  ```
+  
+- Добавили задание `docker` в файл `monitoring/prometheus/prometheus.yml` (из контейнера обращаемся по имени сервера докер-хоста), пересобрали образ `cd cd docker; make docker-build-prometheus`
+
+- Поднимаем сервисы
+
+  ```bash
+  cd docker
+  docker-compose up -d
+  docker-compose -f docker-compose-monitoring.yml up -d
+  ```
+  
+- В интерфейсе prometheus появятся метрики`engine_daemon_`
+
+  По количеству и главное по составу, сильно уступает метрикам cAdvisor (начинаются с `container_`).
+
+  В качестве дашборда можно попробовать Docker Engine Metrics (ID=1229) https://grafana.com/dashboards/1229
+
+**Сбор метрик с Docker в формате Prometheus с использованием Telegraf**
+
+https://hub.docker.com/_/telegraf
+
+https://github.com/influxdata/telegraf/tree/master/plugins/inputs/docker
+
+https://github.com/influxdata/telegraf/tree/master/plugins/outputs/prometheus_client
+
+- Подготовлен образ Telegraf `monitoring/telegraf`  на основе официального образа `telegraf:1.10.4` c плагинами `outputs.prometheus_client`  и `inputs.docker` описанными в конфигурационном файле `monitoring/telegraf/telegraf.conf`
+
+- В `docker/docker-compose-monitoring.yml` добавлен сервис `telegraf`
+
+- В `monitoring/prometheus/prometheus.yml` добавлено задание `telegraf` для сбора метрик
+
+- Поднимаем сервисы
+
+  ```bash
+  cd docker
+  docker-compose up -d
+  docker-compose -f docker-compose-monitoring.yml up -d
+  ```
+  
+- В интерфейсе prometheus появятся метрики`docker_container_` `docker_n_`, весь перечень метрик доступен по ссылке https://github.com/influxdata/telegraf/tree/master/plugins/inputs/docker
+
+  Количество метрик значительно больше чем в cAdvisor. Готовых дашбордов к Grafana для Telegraf:Docker от источника Prometheus нет, есть только от источника InfluxDB.
