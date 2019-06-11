@@ -63,3 +63,11 @@ docker-build-telegraf:
 
 docker-push-telegraf:
 	docker login && docker push $(USERNAME)/telegraf
+
+######################################
+# LOGGING FLUENTD
+docker-build-fluentd:
+	cd ../logging/ﬂuentd && docker build -t $(USERNAME)/fluentd .
+
+docker-push-fluentd:
+	docker login && docker push $(USERNAME)/fluentd
