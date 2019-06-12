@@ -1089,7 +1089,7 @@ https://github.com/influxdata/telegraf/tree/master/plugins/outputs/prometheus_cl
   {"addr": "192.168.96.2", "event": "request", "level": "info", "method": "GET", "path": "/healthcheck?", "request_id": null, "response_status": 200, "service": "post", "timestamp": "2019-06-11 18:40:12"}
   ```
 
-- В конфигурацию fluentd `logging/ﬂuentd/fluent.conf` добавили фильтр `<filter service.post>` для поля log в формате json, пересобрали образ и перезапустили fluentd
+- В конфигурацию fluentd `logging/fluentd/fluent.conf` добавили фильтр `<filter service.post>` для поля log в формате json, пересобрали образ и перезапустили fluentd
 
   ```bash
   cd docker
@@ -1133,7 +1133,7 @@ https://github.com/influxdata/telegraf/tree/master/plugins/outputs/prometheus_cl
   I, [2019-06-11T22:07:53.325818 #1]  INFO -- : service=ui | event=request | path=/ | request_id=ac893ced-abb1-4738-baa2-1ecda66c1ee2 | remote_addr=1.1.1.1 | method= GET | response_status=200
   ```
 
-- В конфигурацию fluentd `logging/ﬂuentd/fluent.conf` добавили фильтр `<filter service.ui>` для поля log в не структурированном формате, пересобрали образ и перезапустили fluentd
+- В конфигурацию fluentd `logging/fluentd/fluent.conf` добавили фильтр `<filter service.ui>` для поля log в не структурированном формате, пересобрали образ и перезапустили fluentd
 
   ```bash
   cd docker
@@ -1165,7 +1165,7 @@ https://github.com/influxdata/telegraf/tree/master/plugins/outputs/prometheus_cl
 
 Онлайн тест шаблона: https://grokdebug.herokuapp.com/
 
-- Заменили в конфигурации fluentd `logging/ﬂuentd/fluent.conf` фильтр `<filter service.ui>` на несколько grok шаблонов для разбора логов, пересобрали образ и перезапустили fluentd
+- Заменили в конфигурации fluentd `logging/fluentd/fluent.conf` фильтр `<filter service.ui>` на несколько grok шаблонов для разбора логов, пересобрали образ и перезапустили fluentd
 
 - Поле message в неструктурированном формате разобралось на несколько полей
 
