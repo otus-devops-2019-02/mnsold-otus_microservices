@@ -993,3 +993,242 @@ https://github.com/influxdata/telegraf/tree/master/plugins/outputs/prometheus_cl
 - В интерфейсе prometheus появятся метрики`docker_container_` `docker_n_`, весь перечень метрик доступен по ссылке https://github.com/influxdata/telegraf/tree/master/plugins/inputs/docker
 
   Количество метрик значительно больше чем в cAdvisor. Готовых дашбордов к Grafana для Telegraf:Docker от источника Prometheus нет, есть только от источника InfluxDB.
+
+
+# ДЗ №23
+
+##Подготовительные мероприятия для ДЗ
+
+- Для этого ДЗ обновлен код приложения reddit в директории src/ из https://github.com/express42/reddit/tree/logging бранч=logging
+
+- У приложения reddit изменен тэг c `1.0` на `logging`
+
+- Собраны новые образы
+
+  ```bash
+  cd docker
+  make \
+  docker-build-comment docker-push-comment \
+  docker-build-post docker-push-post \
+  docker-build-ui docker-push-ui
+  ```
+
+- Создана докер машина `logging`
+
+  ```bash
+  docker-machine create --driver google \
+  --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
+  --google-machine-type n1-standard-1 \
+  --google-open-port 5601/tcp \
+  --google-open-port 9292/tcp \
+  --google-open-port 9411/tcp \
+  logging
+  
+  # configure local env
+  eval $(docker-machine env logging)
+  
+  # узнаем IP адрес
+  docker-machine ip logging
+  ```
+
+##Создание сервисов для логирования
+
+- Описали сервисы fluentd, elasticsearch, kibana в файле`docker/docker-compose-logging.yml`
+
+- Подготовили образ fluend со своим конфигурационным файлом в директории `logging\ﬂuentd`, собрали образ
+
+  ```bash
+  cd docker
+  make docker-build-fluentd docker-push-fluentd
+  ```
+
+- Запускаем сервисы приложения, делаем в веб-интерфейсе посты и смотрим логи
+
+  ```bash
+  cd docker
+  docker-compose up -d
+  
+  #просмотра логов post сервиса
+  docker-compose logs -f post
+  ```
+
+  Временно игнорируем ошибки по доступности Zipkin, т.к. он пока не установлен.
+
+- Поднимем сервисы логирования
+  Сначала делаем fix для elasticsearch чтоб работал, а не умирал:
+
+  ```bash
+  ssh docker-user@$(docker-machine ip logging) -i ~/.docker/machine/machines/logging/id_rsa
+  sudo sysctl -w vm.max_map_count=262144
+  exit
+  ```
+  ```bash
+  cd docker
+  docker-compose -f docker-compose-logging.yml up -d
+  ```
+
+##Работа с логами
+
+###Структурированные логи в формате json
+
+- Добавили сбор логов сервиса POSTв fluentd в файл `docker/docker-compose.yml`, перезапустили сервис
+
+  ```bash
+  docker-compose stop post
+  docker-compose rm post
+  docker-compose up -d
+  ```
+
+- В интерфейсе Kibana создали индекс `fluentd-*` в Management - Kibana - Index Patterns
+
+- Поработали в Kibana в разделе Discover, наложили фильтры (по событию/по событиям конкретного контейнера), посмотрели на список полей логов
+
+- В одно из полей, в поле log, информация пишется в структурированном виде в формате json:
+
+  ```json
+  {"addr": "192.168.96.2", "event": "request", "level": "info", "method": "GET", "path": "/healthcheck?", "request_id": null, "response_status": 200, "service": "post", "timestamp": "2019-06-11 18:40:12"}
+  ```
+
+- В конфигурацию fluentd `logging/fluentd/fluent.conf` добавили фильтр `<filter service.post>` для поля log в формате json, пересобрали образ и перезапустили fluentd
+
+  ```bash
+  cd docker
+  make docker-build-fluentd docker-push-fluentd
+  docker-compose -f docker-compose-logging.yml up -d fluentd
+  ```
+
+- Добавили несколько постов, увидели, что одно поле log, которое было в формате json, разобралось на несколько полей, выполнили поиск по одному из полей в формате `имя_поля: ключевое_слово`
+
+  ```properties
+  "addr": "192.168.96.2",
+  "event": "request",
+  "level": "info",
+  "method": "GET",
+  "path": "/healthcheck?",
+  "request_id": "ee1fb775-beef-4759-9a50-cd2a23018e0c",
+  "response_status": 200,
+  "service": "post",
+  "timestamp": "2019-06-11 21:59:13",
+  "@timestamp": "2019-06-11T21:59:13+00:00",
+  "@log_name": "service.post"
+  ```
+
+  
+
+### Не структурированные логи
+
+####regexp
+
+- Добавили сбор логов сервиса UI в fluentd в файл `docker/docker-compose.yml`, перезапустили сервис
+
+  ```bash
+  docker-compose stop ui
+  docker-compose rm ui
+  docker-compose up -d
+  ```
+
+- В одно из полей, в поле log, информация пишется в относительно не структурированном виде:
+
+  ```
+  I, [2019-06-11T22:07:53.325818 #1]  INFO -- : service=ui | event=request | path=/ | request_id=ac893ced-abb1-4738-baa2-1ecda66c1ee2 | remote_addr=1.1.1.1 | method= GET | response_status=200
+  ```
+
+- В конфигурацию fluentd `logging/fluentd/fluent.conf` добавили фильтр `<filter service.ui>` для поля log в не структурированном формате, пересобрали образ и перезапустили fluentd
+
+  ```bash
+  cd docker
+  make docker-build-fluentd docker-push-fluentd
+  docker-compose -f docker-compose-logging.yml up -d fluentd
+  ```
+- Поле log в неструктурированном формате разобралось на несколько полей
+
+  ```properties
+  "level": "INFO",
+  "user": "--",
+  "service": "ui",
+  "event": "request",
+  "path": "/",
+  "request_id": "75d32c24-c039-41e4-b8af-153a72567633",
+  "remote_addr": "1.1.1.1",
+  "method": "GET",
+  "response_status": "200",
+  "@timestamp": "2019-06-11T22:13:13+00:00",
+  "@log_name": "service.ui"
+  ```
+
+
+#### grok template
+
+Список типов grok полей: https://github.com/elastic/logstash/blob/v1.4.0/patterns/grok-patterns
+
+Использование нескольких шаблонов для разбора поля https://www.rubydoc.info/gems/fluent-plugin-grok-parser/2.0.0
+
+Онлайн тест шаблона: https://grokdebug.herokuapp.com/
+
+- Заменили в конфигурации fluentd `logging/fluentd/fluent.conf` фильтр `<filter service.ui>` на несколько grok шаблонов для разбора логов, пересобрали образ и перезапустили fluentd
+
+- Поле message в неструктурированном формате разобралось на несколько полей
+
+  ```properties
+  "service": "ui",
+  "event": "request",
+  "path": "/new",
+  "request_id": "cec3f2d6-0e6b-426a-bf0b-814fd0e48c77",
+  "remote_addr": "1.1.1.1",
+  "method": " GET",
+  "response_status": "200",
+  "@timestamp": "2019-06-11T23:10:14+00:00",
+  "@log_name": "service.ui"
+  ```
+
+  !!! Это один из примеров вывода, сервис ui пишет в нескольких форматах, для разбора всех форматов вывода применено несколько подряд идущих grok шаблонов `<filter service.ui>` `<filter service.ui>` , причем в последнем указано несколько pattern для разбора поля message.
+
+  **Задание со * (стр 43)**
+
+  ```xml
+  <filter service.ui>
+    @type parser
+    format grok
+    <grok>
+      pattern <шаблон_разбора_поля_1>
+    </grok>
+    <grok>
+      pattern <шаблон_разбора__поля_2>
+    </grok>
+    <grok>
+      pattern %{GREEDYDATA:message}  <--если_не_подошли_шаблоны_выше
+    </grok>
+    key_name message
+  </filter>
+  ```
+  
+  `reserve_data yes` - важно, если не указано, весь объект строки журнала заменяется только свойствами, извлеченными из `format`, поэтому, если у вас уже есть другие свойства, такие как те, которые добавлены фильтром `kubernetes_metadata`, они удаляются, если не добавить параметр `reserve_data`. Думаю, что вариант представленный выше с последним pattern, должен решить проблему указания данной опции.
+
+### Распределенный трейсинг (Zipkin)
+
+- Добавили сервис zipkin в `docker/docker-compose-logging.yml`
+
+- Включили в каждом приложении поддержку zipkin в `docker/docker-compose.yml`
+
+- Перезапустим приложения и сервисы
+
+  ```bash
+  cd docker
+  docker-compose -f docker-compose-logging.yml -f docker-compose.yml down
+  docker-compose -f docker-compose-logging.yml -f docker-compose.yml up -d
+  ```
+
+- После того как поработали в приложениях, в zipkin `http://< IP >:9411/` появились записи от приложения
+
+**Задание со * (стр 53)**
+
+- Для успешной сборки приложения нужно
+
+  - в `docker_build.sh` добавить тег `logging` к образу
+  - в `Dockerfile` сервисов ui/comment перед инструкцией `RUN apt-get update ...` добавить инструкцию `RUN sed '/jessie-updates/s/^/# /' -i /etc/apt/sources.list`, иначе образ не собирается
+  
+- Описание выявленной проблемы с использованием Zipkin:
+
+  При нажатии на пост, приложение выдает ошибку: Can't show comments, some problems with the comment service.
+
+  Zipkin сообщает о статусе `http.status=500` в span'e операции comment на запрос get.
