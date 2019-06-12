@@ -1224,10 +1224,9 @@ https://github.com/influxdata/telegraf/tree/master/plugins/outputs/prometheus_cl
 
 - Для успешной сборки приложения нужно
 
-  - в `docker_build.sh` поправить имя переменной USER_NAME
   - в `docker_build.sh` добавить тег `logging` к образу
   - в `Dockerfile` сервисов ui/comment перед инструкцией `RUN apt-get update ...` добавить инструкцию `RUN sed '/jessie-updates/s/^/# /' -i /etc/apt/sources.list`, иначе образ не собирается
-
+  
 - Описание выявленной проблемы с использованием Zipkin:
 
   При нажатии на пост, приложение выдает ошибку: Can't show comments, some problems with the comment service.
