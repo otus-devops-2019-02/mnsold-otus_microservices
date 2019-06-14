@@ -1232,3 +1232,13 @@ https://github.com/influxdata/telegraf/tree/master/plugins/outputs/prometheus_cl
   При нажатии на пост, приложение выдает ошибку: Can't show comments, some problems with the comment service.
 
   Zipkin сообщает о статусе `http.status=500` в span'e операции comment на запрос get.
+
+
+
+# ДЗ№25
+
+Пройдено руководство по настройке kubernetes:
+
+Kubernetes The Hard Way https://github.com/kelseyhightower/kubernetes-the-hard-way
+
+Процесс выполнения отмечен в файле`kubernetes-the-hard-way-tutorial/MY_EXECUTION_GUIDE.md`
