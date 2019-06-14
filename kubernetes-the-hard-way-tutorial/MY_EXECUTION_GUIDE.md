@@ -60,6 +60,20 @@ sudo mv kubectl /usr/local/bin/
 
 # 03 Provisioning Compute Resources
 
+> **Вопрос**
+>
+> Each worker instance requires a pod subnet allocation from the  Kubernetes cluster CIDR range. The pod subnet allocation will be used to  configure container networking in a later exercise. The `pod-cidr` instance metadata will be used to expose pod subnet allocations to compute instances at runtime.
+>
+> > The Kubernetes cluster CIDR range is defined by the Controller Manager's `--cluster-cidr` flag. In this tutorial the cluster CIDR range will be set to `10.200.0.0/16`, which supports 254 subnets.
+>
+> ОТВЕТ:
+>
+> В 9 и 11й темах эта сеть используется для настройки сети на воркерах.
+>
+> Создание маршрутов, чтобы под с одного узла могли взаимоде1йствовать с подом др узла. Маршрут создается для каждого рабочего узла, который сопоставляет диапазон CIDR Pod узла с внутренним IP-адресом узла.
+>
+> По сути, это сеть подов.
+
 ### Virtual Private Cloud Network
 
 ```bash
@@ -497,7 +511,18 @@ kube-scheduler.pem
 
 ### The Kubernetes API Server Certificate
 
-Generate the Kubernetes API Server certificate and private key:
+> **Вопрос**
+>
+> Generate the Kubernetes API Server certificate and private key
+>
+> -hostname=10.32.0.1
+>
+> ОТВЕТ:
+>
+> В 8-й теме эта сеть используется в сервисах kube-apiserver, kube-controller-manager:  ` --service-cluster-ip-range=10.32.0.0/24 \\`
+>
+> Generate the Kubernetes API Server certificate and private key:
+>
 
 ```bash
 {
@@ -2496,62 +2521,3 @@ Delete the `kubernetes-the-hard-way` network VPC:
   gcloud -q compute networks delete kubernetes-the-hard-way
 }
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ВОПРОСЫ
-
-- 03
-
-  Each worker instance requires a pod subnet allocation from the  Kubernetes cluster CIDR range. The pod subnet allocation will be used to  configure container networking in a later exercise. The `pod-cidr` instance metadata will be used to expose pod subnet allocations to compute instances at runtime.
-
-  > The Kubernetes cluster CIDR range is defined by the Controller Manager's `--cluster-cidr` flag. In this tutorial the cluster CIDR range will be set to `10.200.0.0/16`, which supports 254 subnets.
-
-  ОТВЕТ:
-
-  В 9 и 11й темах эта сеть используется для настройки сети на воркерах.
-
-  Создание маршрутов, чтобы под с одного узла могли взаимоде1йствовать с подом др узла. Маршрут создается для каждого рабочего узла, который сопоставляет диапазон CIDR Pod узла с внутренним IP-адресом узла.
-
-  По сути, это сеть подов.
-
-  
-
-- 04
-
-  Generate the Kubernetes API Server certificate and private key
-
-  -hostname=10.32.0.1
-
-  ОТВЕТ:
-
-  В 8-й теме эта сеть используется в сервисах kube-apiserver, kube-controller-manager:  ` --service-cluster-ip-range=10.32.0.0/24 \\`
-
-  
-
