@@ -1232,3 +1232,38 @@ https://github.com/influxdata/telegraf/tree/master/plugins/outputs/prometheus_cl
   При нажатии на пост, приложение выдает ошибку: Can't show comments, some problems with the comment service.
 
   Zipkin сообщает о статусе `http.status=500` в span'e операции comment на запрос get.
+
+
+
+# ДЗ№25
+
+- Созданы файлы с Deployment манифестами приложений ui/post/comment/mongo в `kubernetes/reddit`
+
+- Пройдено руководство по настройке kubernetes:
+
+  Kubernetes The Hard Way https://github.com/kelseyhightower/kubernetes-the-hard-way
+
+  Процесс выполнения отмечен в файле`kubernetes-the-hard-way-tutorial/MY_EXECUTION_GUIDE.md`
+
+- Выполнен запуск приложений
+```bash
+cd kubernetes/reddit
+
+kubectl apply -f comment-deployment.yml
+kubectl apply -f mongo-deployment.yml
+kubectl apply -f post-deployment.yml
+kubectl apply -f ui-deployment.yml
+```
+- Проверка показала успешный запуск
+```bash
+kubectl get pods -n default|grep -iE "ui|post|comment|mongo|name"
+
+NAME                                  READY   STATUS    RESTARTS   AGE
+comment-deployment-7f6d74b44f-bq5rg   1/1     Running   0          61s
+mongo-deployment-67f58fb89-dxc4n      1/1     Running   0          61s
+post-deployment-7bbd85f579-978bw      1/1     Running   0          61s
+ui-deployment-bffdc68c5-nf5tt         1/1     Running   0          75s
+```
+
+Пригодится:
+Разбор сети https://habr.com/ru/company/flant/blog/420813/
