@@ -3,9 +3,12 @@ apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
   name: mongo
+  #Метки в деплоймент
   labels:
     app: reddit
     component: mongo
+    comment-db: "true"
+    post-db: "true"
 spec:
   replicas: 1
   selector:
@@ -15,9 +18,12 @@ spec:
   template:
     metadata:
       name: mongo
+      #Метки в под
       labels:
         app: reddit
         component: mongo
+        comment-db: "true"
+        post-db: "true"
     spec:
       containers:
       - image: mongo:3.2
