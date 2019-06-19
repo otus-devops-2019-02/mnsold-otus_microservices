@@ -1,0 +1,17 @@
+#general
+project = "project_id"
+region ="europe-west1"
+zone = "europe-west1-b"
+
+#kubernetes cluster
+k8s_cluster_name = "otus-cluster-1"
+min_master_version = "1.12.7-gke.17"
+
+#kubernetes nodes pool
+k8s_node_pool_name = "otus-node-pool-1"
+machine_type = "g1-small"
+disk_size_gb = "20"
+disk_type = "pd-standard"
+initial_node_count = 2
+min_node_count = 2
+max_node_count = 4

@@ -1,0 +1,9 @@
+variable k8s_cluster_name {}
+variable min_master_version {}
+variable k8s_node_pool_name {}
+variable machine_type {}
+variable disk_size_gb {}
+variable disk_type {}
+variable initial_node_count {}
+variable min_node_count {}
+variable max_node_count {}
