@@ -1,0 +1,21 @@
+---
+apiVersion: v1
+kind: Service
+#В имени metadata нельзя использовать "_"
+metadata:
+  name: comment-db
+  #Дополнительная метка comment-db, что бы различать сервис от mongo
+  labels:
+    app: reddit
+    component: mongo
+    comment-db: "true"
+spec:
+  ports:
+  - port: 27017
+    protocol: TCP
+    targetPort: 27017
+  #Дополнительная метка comment-db, что бы различать сервис от mongo
+  selector:
+    app: reddit
+    component: mongo
+    comment-db: "true"

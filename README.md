@@ -1267,3 +1267,558 @@ ui-deployment-bffdc68c5-nf5tt         1/1     Running   0          75s
 
 Пригодится:
 Разбор сети https://habr.com/ru/company/flant/blog/420813/
+
+
+
+# ДЗ №26
+
+##minikube
+
+- kubectl была установлена ранее
+
+  ```bash
+  kubectl version
+  Client Version: version.Info{Major:"1", Minor:"12", GitVersion:"v1.12.0", GitCommit:"0ed33881dc4355495f623c6f22e7dd0b7632b7c0", GitTreeState:"clean", BuildDate:"2018-09-27T17:05:32Z", GoVersion:"go1.10.4", Compiler:"gc", Platform:"linux/amd64"}
+  ```
+
+- Установлен mimikube, руководство https://kubernetes.io/docs/tasks/tools/install-minikube/
+
+- Запуск minikube
+
+  ```bash
+  #ранее был установлен докер
+  docker -v
+  Docker version 18.06.3-ce, build d7080c1
+  ```
+
+  > Выполнить перед запуском minikube, либо запустить, убедиться в проблеме, удалить  `sudo minikube delete` и запустить повторно
+  >
+  > Проблема:
+  >
+  > Контейнеры с CoreDNS падают с ошибкой
+  >
+  > ```bash
+  > docker logs 2de7ba14078a
+  > 
+  > ...
+  > 2019/06/15 22:34:44 [FATAL] plugin/loop: Seen "HINFO IN 6780840038128557085.1982390448653738826." more than twice, loop detected
+  > ```
+  >
+  > Решение 1:
+  >
+  > https://github.com/kubernetes/minikube/issues/3511
+  >
+  > ```bash
+  > #Добавить опцию к старту minikube
+  > --extra-config=kubelet.resolv-conf=/run/systemd/resolve/resolv.conf
+  > ```
+  >
+  > Решение 2:
+  >
+  > https://github.com/kubernetes/minikube/issues/3511
+  >
+  > ```bash
+  > sudo apt-get install dnsmasq
+  > sudo systemctl stop systemd-resolved
+  > sudo systemctl disable systemd-resolved
+  > 
+  > sudo nano /etc/NetworkManager/NetworkManager.conf
+  > # add under [main]
+  > dns=dnsmasq
+  > 
+  > sudo cp /etc/resolv.conf /etc/resolv.conf.bak
+  > sudo rm /etc/resolv.conf; sudo ln -s /var/run/NetworkManager/resolv.conf /etc/resolv.conf
+  > 
+  > sudo systemctl start dnsmasq
+  > sudo systemctl restart NetworkManager
+  > 
+  > #----------
+  > #обратные действия
+  > sudo systemctl stop dnsmasq
+  > sudo systemctl disable dnsmasq
+  > 
+  > sudo nano /etc/NetworkManager/NetworkManager.conf
+  > # comment/delete under [main]
+  > #dns=dnsmasq
+  > 
+  > sudo rm /etc/resolv.conf
+  > sudo mv /etc/resolv.conf.bak /etc/resolv.conf
+  > 
+  > sudo systemctl start systemd-resolved
+  > sudo systemctl enable systemd-resolved
+  > sudo systemctl restart NetworkManager
+  > ```
+
+  Запуск в docker, вместо virtualbox:
+
+  ```bash
+  ./kubernetes/minikubectl.sh start
+  
+  ```
+
+  Чтобы выполнять kubectl не рутом, в `kubernetes/minikubectl.sh` по рекомендации из вывода запуска minikube добавлено:
+
+  ```bash
+  sudo chown -R $USER $HOME/.kube $HOME/.minikube
+  ```
+
+  
+
+  > Проблема:
+  >
+  > Когда я деплоил приложения, мой миникуб умирал на глазах, выглядело это по разному, от статусов контейнеров в "evicted", до получения ошибки: The connection to the server 192.168.1.138:8443 was refused - did you specify the right host or port?
+  >
+  > По умолчанию, minikuve запускается с такими параметрами:
+  >
+  > ```rst
+  > Creating none VM (CPUs=2, Memory=2048MB, Disk=20000MB) ...
+  > ```
+  >
+  > И у меня было 2-3свободных ГБ на HDD,.
+  >
+  > Решение:
+  >
+  > Накинул несколько ГБ HDD (хотя не уверен, что именно в этом была проблема, т.к. не видел, что упираюсь в него.)
+  >
+  > Только после явного указания ресурсов, приложения задеплоились и миникуб не умер.
+  >
+  > ```bash
+  > #параметры запуска лучше посмотреть  kubernetes/minikubectl.sh, но примерно они были такие:
+  > sudo minikube start --kubernetes-version v1.12.0 --vm-driver none --extra-config=kubelet.resolv-conf=/run/systemd/resolve/resolv.conf --cpus 2 --memory 4096
+  > ```
+
+  Вывод
+
+  ```rst
+  * Relaunching Kubernetes v1.12.0 using kubeadm ...
+  * Configuring local host environment ...
+  
+  ! The 'none' driver provides limited isolation and may reduce system security and reliability.
+  ! For more information, see:
+    - https://github.com/kubernetes/minikube/blob/master/docs/vmdriver-none.md
+  
+  ! kubectl and minikube configuration will be stored in /home/username
+  ! To use kubectl or minikube commands as your own user, you may
+  ! need to relocate them. For example, to overwrite your own settings:
+  
+    - sudo mv /home/username/.kube /home/username/.minikube $HOME
+    - sudo chown -R $USER $HOME/.kube $HOME/.minikube
+  
+  * This can also be done automatically by setting the env var CHANGE_MINIKUBE_NONE_USER=true
+  * Verifying: apiserver proxy etcd scheduler controller dns
+  * Done! kubectl is now configured to use "minikube"
+  
+  ```
+
+  
+
+  ```bash
+  docker ps -a --format "table {{.Image}}\\t{{.Command}}\\t{{.Status}}\\t{{.Names}}"
+  IMAGE                  COMMAND                  STATUS  NAMES
+  4689081edb10           "/storage-provisioner"   Up...   k8s_storage-provisioner_storage-provisioner_kube-system_...
+  k8s.gcr.io/pause:3.1   "/pause"                 Up...   k8s_POD_storage-provisioner_kube-system_...
+  367cdc8433a4           "/coredns -conf /etc…"   Up...   k8s_coredns_coredns-576cbf47c7-d5x68_kube-system_...
+  367cdc8433a4           "/coredns -conf /etc…"   Up...   k8s_coredns_coredns-576cbf47c7-sqgtf_kube-system_...
+  k8s.gcr.io/pause:3.1   "/pause"                 Up...   k8s_POD_coredns-576cbf47c7-d5x68_kube-system_...
+  k8s.gcr.io/pause:3.1   "/pause"                 Up...   k8s_POD_coredns-576cbf47c7-sqgtf_kube-system_...
+  9c3a9d3f09a0           "/usr/local/bin/kube…"   Up...   k8s_kube-proxy_kube-proxy-ql42x_kube-system_...
+  k8s.gcr.io/pause:3.1   "/pause"                 Up...   k8s_POD_kube-proxy-ql42x_kube-system_...
+  3cab8e1b9802           "etcd --advertise-cl…"   Up...   k8s_etcd_etcd-minikube_kube-system_...
+  5a1527e735da           "kube-scheduler --ad…"   Up...   k8s_kube-scheduler_kube-scheduler-minikube_kube-system_...
+  ab60b017e34f           "kube-apiserver --au…"   Up...   k8s_kube-apiserver_kube-apiserver-minikube_kube-system_...
+  119701e77cbc           "/opt/kube-addons.sh"    Up...   k8s_kube-addon-manager_kube-addon-manager-minikube_kube-system_...
+  k8s.gcr.io/pause:3.1   "/pause"                 Up...   k8s_POD_kube-apiserver-minikube_kube-system_...
+  k8s.gcr.io/pause:3.1   "/pause"                 Up...   k8s_POD_etcd-minikube_kube-system_...
+  k8s.gcr.io/pause:3.1   "/pause"                 Up...   k8s_POD_kube-addon-manager-minikube_kube-system_...
+  k8s.gcr.io/pause:3.1   "/pause"                 Up...   k8s_POD_kube-scheduler-minikube_kube-system_...
+  07e068033cf2           "kube-controller-man…"   Up...   k8s_kube-controller-manager_kube-controller-manager-minikube_kube-system_...
+  k8s.gcr.io/pause:3.1   "/pause"                 Up...   k8s_POD_kube-controller-manager-minikube_kube-system_...
+  ```
+
+  ```bash
+  kubectl get nodes
+  NAME       STATUS   ROLES    AGE   VERSION
+  minikube   Ready    <none>   86m   v1.12.0
+  
+  kubectl get services
+  NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+  kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   4m19s
+  ```
+
+- Конфигурация kubectl, контекст подключения=кластер + пользователь [+ неймспейс]
+
+  Контексты хранятся в манифесте в виде yml файла ` ~/.kube/config`
+
+  ```bash
+  #Список контекстов
+  kubectl config get-contexts
+  
+  #Текущий контекст
+  kubectl config current-context
+  
+  #Переключение на контекст
+  kubectl config use-context minikube
+  ```
+
+- Деплой приложения `ui`
+
+  Корректируем описание деплоя `kubernetes/reddit/ui-deployment.yml`
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/ui-deployment.yml
+  
+  kubectl get deployment
+  NAME   DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+  ui     3         3         3            3           18s
+  
+  ```
+
+- Проброс порта с пода приложения на локальную машину
+
+  ```bash
+  #ищем приложение
+  kubectl get pods --selector component=ui
+  NAME                  READY   STATUS    RESTARTS   AGE
+  ui-59966bfd6d-dhn64   1/1     Running   0          12m
+  ui-59966bfd6d-v8jpk   1/1     Running   0          12m
+  
+  #пробрасываем порт
+  kubectl port-forward ui-59966bfd6d-dhn64 8080:9292
+  Forwarding from 127.0.0.1:8080 -> 9292
+  Forwarding from [::1]:8080 -> 9292
+  
+  ```
+  
+
+Результат по адресу http://localhost:8080
+
+> Ошибка:
+>
+> `unable to do port forwarding: socat not found.`
+>
+> Исправление:
+>
+> `sudo apt install socat`
+
+- Деплой приложений `post` `comment`  и базы `mongo`
+
+  Корректируем описание деплоя `kubernetes/reddit/{post|comment|mongo}-deployment.yml` и запускаем
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/mongo-deployment.yml
+  kubectl apply -f kubernetes/reddit/comment-deployment.yml
+  kubectl apply -f kubernetes/reddit/post-deployment.yml
+  
+  #или все сразу
+  kubectl apply -f kubernetes/reddit/
+  #вывод
+  deployment.apps/comment created
+  deployment.apps/mongo created
+  deployment.apps/post created
+  deployment.apps/ui unchanged
+  
+  kubectl get pods --selector app=reddit
+  NAME                     READY   STATUS    RESTARTS   AGE
+  comment-757758-nw8zs     1/1     Running   0          12m
+  comment-757758-qrj4g     1/1     Running   0          12m
+  mongo-784488d64b-c7rsw   1/1     Running   0          12m
+  post-5cf595cb8d-t288v    1/1     Running   0          12m
+  post-5cf595cb8d-xzvzf    1/1     Running   0          12m
+  ui-59966bfd6d-dhn64      1/1     Running   0          12m
+  ui-59966bfd6d-v8jpk      1/1     Running   0          12m
+  
+  ```
+  
+  Для проверки, последовательно пробрасываем порты аналогично приложению ui и проверяем доступность по адресу http://localhost:8080/healthcheck
+  
+```bash
+kubectl port-forward comment-757758-nw8zs 8080:9292
+kubectl port-forward post-5cf595cb8d-xzvzf 8080:5000
+```
+
+- Добавили сервисы к приложениям `kubernetes/reddit/{comment|post|mongo}-service.yml`
+
+  Сервисы нужны чтобы знать как к их найти. Например, при обращении на адрес post:9292 изнутри любого из POD-ов текущего namespace нас переправит на 9292-ный порт одного из POD-ов приложения post, выбранных по label-ам.
+
+  Применяем сервисы
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/comment-service.yml
+  kubectl apply -f kubernetes/reddit/post-service.yml
+  kubectl apply -f kubernetes/reddit/mongodb-service.yml
+  
+  
+  kubectl get services
+  NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)     AGE
+  comment      ClusterIP   10.103.112.32   <none>        9292/TCP    25s
+  kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP     154m
+  mongodb      ClusterIP   10.97.71.87     <none>        27017/TCP   12s
+  post         ClusterIP   10.109.191.26   <none>        5000/TCP    18s
+  
+  ```
+
+- Добавили сервисы coomment-db  post-db (в кубере нет алиасов, поэтому это через сервисы)
+
+  - В сервисах `kubernetes/reddit/comment-mongodb-service.yml` и `kubernetes/reddit/post-mongodb-service.yml` - добавлены дополнительные метки, чтобы отличать их от сервиса mongo
+  - В деплойменте mongo `kubernetes/reddit/mongo-deployment.yml` добавили эти же метки.
+  - В деплойментах `kubernetes/reddit/post-deployment.yml` и `kubernetes/reddit/comment-deployment.yml` добавили переменную окружения на БД, которая соответствует метке сервиса в метаданных.
+
+- Делаем проверку работоспособности приложения: работает!
+
+  ```bash
+  kubectl port-forward ui-59966bfd6d-dhn64 8080:9292
+  ```
+
+  Идем на http://localhost:8080/
+
+  Ошибки в приложении нет, поста и комментарии создаются!
+
+  В целом, сервис mongodb не нужен, т.к. на него ничего не ссылается и его можно удалить, тоже все будет работать:
+
+  ```bash
+  kubectl delete service mongodb
+  ```
+
+  Либо можно удалить `*-mongodb-service.yml` и оставить только `mongodb-service.yml` и прописать это базу в в окружении приложения.
+
+- Добавили сервис для ui в файл `kubernetes/reddit/ui-service.yml` с типом NodePort
+
+  NodePort - для доступа снаружи кластера в диапазоне 30000-32767
+  port - для доступа к сервису изнутри кластера
+
+  Применяем
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/
+  
+  kubectl get services
+  NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+  mongodb      ClusterIP   10.98.204.109   <none>        27017/TCP        2m20s
+  ui           NodePort    10.99.194.169   <none>        9292:32092/TCP   2m19s
+  ...
+  
+  ```
+
+  Теперь можно обратиться к приложению по сети http://192.168.1.138:32092/
+
+- Список сервисов через команду `minikube`
+
+  ```bash
+  minikube service list
+  |-------------|------------|----------------------------|
+  |  NAMESPACE  |    NAME    |            URL             |
+  |-------------|------------|----------------------------|
+  | default     | comment    | No node port               |
+  | default     | comment-db | No node port               |
+  | default     | kubernetes | No node port               |
+  | default     | mongodb    | No node port               |
+  | default     | post       | No node port               |
+  | default     | post-db    | No node port               |
+  | default     | ui         | http://192.168.1.138:32092 |
+  | kube-system | kube-dns   | No node port               |
+  |-------------|------------|----------------------------|
+  
+  # перебросит в браузер на http://192.168.1.138:32092 
+  minikube service ui
+  ```
+
+- Расширения (addons) для Kubernetes в minikube
+
+  ```bash
+  # список аддонов
+  minikube addons list
+  - addon-manager: enabled
+  - dashboard: disabled
+  - default-storageclass: enabled
+  - efk: disabled
+  - freshpod: disabled
+  - gvisor: disabled
+  - heapster: disabled
+  - ingress: disabled
+  - logviewer: disabled
+  - metrics-server: disabled
+  - nvidia-driver-installer: disabled
+  - nvidia-gpu-device-plugin: disabled
+  - registry: disabled
+  - registry-creds: disabled
+  - storage-provisioner: enabled
+  - storage-provisioner-gluster: disabled
+  
+  ```
+
+- Установим аддон dashboard
+
+  В новых версиях по умолчанию включен, в нашей версии он еще не включен, включим его
+
+  ```bash
+  sudo minikube addons enable dashboard
+  minikube addons open dashboard
+  
+  minikube addons list|grep dashboard
+  - dashboard: enabled
+  
+  # все объекты kubernetes-dashboard 
+  kubectl get all --all-namespaces --selector app=kubernetes-dashboard
+  NAMESPACE     NAME                                        READY   STATUS    RESTARTS   AGE
+  kube-system   pod/kubernetes-dashboard-776c455d65-m5hhn   1/1     Running   0          10m
+  
+  NAMESPACE     NAME                           TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+  kube-system   service/kubernetes-dashboard   ClusterIP   10.107.90.26   <none>        80/TCP    10m
+  
+  NAMESPACE     NAME                                              DESIRED   CURRENT   READY   AGE
+  kube-system   replicaset.apps/kubernetes-dashboard-776c455d65   1         1         1       10m
+  
+  ```
+
+  Перейдем в dashboard, т.к. `minikube service list` не знает url для сервиса `kubernetes-dashboard`, выполнять `minikube service kubernetes-dashboard -n kube-system` нет смысла, воспользуемся `kubectl port-forward ...`
+
+  ```bash
+  kubectl port-forward service/kubernetes-dashboard -n=kube-system 8080:80
+  ```
+
+  Переходим по ссылке http://localhost:8080/
+
+- Добавляем namespace dev в `kubernetes/reddit/dev-namespace.yml`
+
+  Применяем
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/dev-namespace.yml
+  ```
+
+  Разворачиваем приложение в неймспейсе dev
+
+  ```bash
+   # Предварительно удалим ui-сервис, чтобы не было конфликта по nodePort: 32092
+   # либо нужно удалить зафиксированный NodePort, тогда назначится произвольный из диапазона
+   kubectl delete -f kubernetes/reddit/ui-service.yml
+   
+   kubectl apply -n dev -f kubernetes/reddit
+  ```
+
+  Результат http://nework_ip:32092/
+
+  Добавляем в на страницу приложения UI информацию о том, в каком неймспейсе оно работает, добавляем спецификацию `env` в `kubernetes/reddit/ui-deployment.yml`  дл извлечений неймпейса из метаданных
+
+  Редеплой
+
+  ```bash
+  kubectl apply -n dev -f kubernetes/reddit/ui-deployment.yml
+  ```
+
+  Переходим http://192.168.1.138:32092/
+
+  Вверху приложения будет написано "Microservices Reddit **in dev** ui-795997c648-2k2fl container"
+
+##Кластер kubernetes в GKE
+
+  - Создали не большой кластер из 2х нод
+
+  - Настроили доступ к кластеру с лок машины с использованием gcloud
+
+    > bash команда формируется в GKE при нажатии кнопки Подключиться справа у названия кластера
+
+    ```bash
+    gcloud container clusters get-credentials cluster-1 --zone europe-west1-c --project docker-otus-201905
+    
+    # проверяем
+    kubectl config current-context
+    gke_docker-otus-201905_europe-west1-c_cluster-1
+    
+    ```
+
+  - Разворачиваем приложение
+
+    ```bash
+    #создаем неймспейс
+    kubectl apply -f kubernetes/reddit/dev-namespace.yml
+    
+    #разворачиваем приложение
+    kubectl apply -f kubernetes/reddit/ -n dev
+    
+    #открываем доступ к приложениям в kubernetes
+    gcloud compute firewall-rules create kubernetes-default --source-ranges=0.0.0.0/0 --allow tcp:30000-32767
+    
+    #определяем внешний IP рабочих нод
+    kubectl get nodes -o wide
+    
+    #определяем порт сервиса ui
+    kubectl describe service ui -n dev | grep NodePort
+    ```
+
+    Переходим в приложение http://<node-ip>:<NodePort>
+
+    ![reddit-in-kubernetes](assets/hw26-reddit-in-kubernetes.png)
+
+    ![reddit-in-kubernetes-pods](assets/hw26-reddit-in-kubernetes-pods.png)
+
+  - Включаем dashboard
+
+    Включаем Дополнение в GKE нашего кластера (Изменить там дополнения и включаем нужное).
+
+    Для нормальной работы dashboard необходимо выдать права serviceaccount'у на просмотр информации о кластере. Роль cluster-admin  имеет полный доступ ко всем объектам кластера, назначим ее:
+
+    ```bash
+    kubectl create clusterrolebinding kubernetes-dashboard --clusterrole=cluster-admin --serviceaccount=kube-system:kubernetes-dashboard
+    ```
+
+    > В противном случае в Overview dashboard  будут ошибки типа: "configmaps is forbidden"
+
+    Получаем доступ:
+
+    ```bash
+    kubectl proxy
+    ```
+
+    И переходим в dashboard (token не вводим, нажимаем SKIP) http://localhost:8001/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/
+
+    Ссылка на dashboard взята из документации: https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/
+
+##Terraform for kubernetes
+
+```bash
+#start k8s-cluster
+cd kubernetes/terraform
+terraform init stage/
+terraform apply -auto-approve -var-file stage/terraform.tfvars stage/
+terraform output
+
+#get k8s-cluster credentials, set context
+gcloud container clusters get-credentials otus-cluster-1 --zone europe-west1-b --project docker-otus-201905
+kubectl config current-context
+
+#grant role to kubernetes-dashboard
+cd kubernetes
+kubectl apply -f kubernetes/reddit/kubernetes-dashboard-role.yml
+
+#deploy application
+cd kubernetes
+kubectl apply -f kubernetes/reddit/dev-namespace.yml
+kubectl apply -n dev -f kubernetes/reddit/
+
+#start proxy kubernetes-dashboard to localhost
+kubectl proxy
+#follow the link http://localhost:8001/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/
+
+#destroy k8s-cluster
+cd kubernetes/terraform
+terraform destroy -auto-approve -var-file stage/terraform.tfvars stage/
+```
+
+Пригодится:
+
+Терраформ, кластер: https://www.terraform.io/docs/providers/google/r/container_cluster.html
+
+Терраформ, ноды: https://www.terraform.io/docs/providers/google/r/container_node_pool.html
+
+Директива master_auth/base64decode https://container-solutions.com/propagating-configuration-from-terraform-to-kubernetes-apps/
+
+Директивы master_auth/oauth_scopes https://medium.com/@Joachim8675309/deploy-kubernetes-apps-with-terraform-5b74e5891958
+
+RBAC Authorization:
+
+  Пример манифеста выдачи admin privileges для kubernetes-dashboard https://github.com/kubernetes/dashboard/wiki/Access-control#admin-privileges
+
+  Создание сервисного аккаунта https://github.com/kubernetes/dashboard/wiki/Creating-sample-user#create-service-account
+
+  Using RBAC Authorization https://kubernetes.io/docs/reference/access-authn-authz/rbac/
