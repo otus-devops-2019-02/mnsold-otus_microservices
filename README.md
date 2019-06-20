@@ -1545,7 +1545,7 @@ kubectl port-forward post-5cf595cb8d-xzvzf 8080:5000
   ```bash
   kubectl apply -f kubernetes/reddit/comment-service.yml
   kubectl apply -f kubernetes/reddit/post-service.yml
-  kubectl apply -f kubernetes/reddit/mongo-service.yml
+  kubectl apply -f kubernetes/reddit/mongodb-service.yml
   
   
   kubectl get services
@@ -1579,7 +1579,7 @@ kubectl port-forward post-5cf595cb8d-xzvzf 8080:5000
   kubectl delete service mongodb
   ```
 
-  Либо можно удалить `*-mongodb-service.yml` и оставить только `mongo-service.yml` и прописать это базу в в окружении приложения.
+  Либо можно удалить `*-mongodb-service.yml` и оставить только `mongodb-service.yml` и прописать это базу в в окружении приложения.
 
 - Добавили сервис для ui в файл `kubernetes/reddit/ui-service.yml` с типом NodePort
 
