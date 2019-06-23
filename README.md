@@ -1788,11 +1788,11 @@ gcloud container clusters get-credentials otus-cluster-1 --zone europe-west1-b -
 kubectl config current-context
 
 #grant role to kubernetes-dashboard
-cd kubernetes
+cd <root_repo>
 kubectl apply -f kubernetes/reddit/kubernetes-dashboard-role.yml
 
 #deploy application
-cd kubernetes
+cd <root_repo>
 kubectl apply -f kubernetes/reddit/dev-namespace.yml
 kubectl apply -n dev -f kubernetes/reddit/
 
