@@ -1822,3 +1822,524 @@ RBAC Authorization:
   Создание сервисного аккаунта https://github.com/kubernetes/dashboard/wiki/Creating-sample-user#create-service-account
 
   Using RBAC Authorization https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+
+
+
+# ДЗ №27
+
+## Сервисы
+
+- Определили что такое сервис и его назначение
+
+  Service - абстракции, определяющей  конечные узлы доступа (Endpoint’ы) и описание способа коммуникации с ними.
+
+  Service - определяет конечные узлы доступа (Endpoint’ы): 
+
+  - селекторные сервисы (k8s сам находит POD-ы по label’ам) 
+  - безселекторные сервисы (мы вручную описываем конкретные endpoint’ы) 
+
+  Способ коммуникации с сервисами (тип (type) сервиса): 
+
+  - ClusterIP - дойти до сервиса можно только изнутри кластера 
+  - nodePort - клиент снаружи кластера приходит на опубликованный порт 
+  - LoadBalancer - клиент приходит на облачный (aws elb, Google gclb) ресурс балансировки 
+  - ExternalName - внешний ресурс по отношению к кластеру
+
+## kube-dns
+
+- Задачи kube-dns:
+
+  - ходить в API Kubernetes’a и отслеживать Service-объекты 
+  - заносить DNS-записи о Service’ах в собственную базу 
+  - предоставлять DNS-сервис для разрешения имен в IP-адреса (как внутренних, так и внешних)
+
+- Проверка работы kube-dns
+
+  ```bash
+  # список подов
+  kubectl get pods -n dev
+  NAME                       READY   STATUS    RESTARTS   AGE
+  comment-5fcdb5c95b-kvx8p   1/1     Running   0          2m30s
+  mongo-55f849fdbc-n7rjc     1/1     Running   0          2m29s
+  post-869569b954-l9ltn      1/1     Running   0          2m29s
+  ui-795997c648-b7vsv        1/1     Running   0          2m28s
+  
+  # список сервисов
+  kubectl get services -n dev
+  NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+  comment      ClusterIP   10.15.242.241   <none>        9292/TCP         4m16s
+  comment-db   ClusterIP   10.15.255.218   <none>        27017/TCP        4m16s
+  mongodb      ClusterIP   10.15.249.58    <none>        27017/TCP        4m15s
+  post         ClusterIP   10.15.240.79    <none>        5000/TCP         4m15s
+  post-db      ClusterIP   10.15.254.196   <none>        27017/TCP        4m15s
+  ui           NodePort    10.15.240.98    <none>        9292:32092/TCP   4m14s
+  
+  # разрешаем dns имя в ip, работает
+  kubectl exec -ti -n dev ui-795997c648-b7vsv nslookup comment
+  Name:      comment
+  Address 1: 10.15.242.241 comment.dev.svc.cluster.local
+  
+  # отключаем kube-dns 
+  #видим, что kube-dns работает
+  kubectl get pods -n kube-system|grep -iE "kube-dns|name"
+  NAME                                                       READY   STATUS    RESTARTS   AGE
+  kube-system   kube-dns-autoscaler-76fcd5f658-fjhjt         1/1     Running   0          11m
+  kube-system   kube-dns-b46cc9485-5wd7h                     4/4     Running   0          9m13s
+  kube-system   kube-dns-b46cc9485-nfplx                     4/4     Running   0          11m
+  # смотрим сколько было реплик kube-dns-autoscaler
+  kubectl describe deployment -n kube-system kube-dns-autoscaler|grep -i replicas:
+  Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
+  # смотрим сколько было реплик kube-dns
+  kubectl describe deployment -n kube-system kube-dns|grep -i replicas:
+  Replicas:               2 desired | 2 updated | 2 total | 2 available | 0 unavailable
+  # ставим кол-во реплик=0
+  kubectl scale deployment --replicas 0 -n kube-system kube-dns-autoscaler
+  kubectl scale deployment --replicas 0 -n kube-system kube-dns
+  #проверяем, что больше запущеных подов нет
+  kubectl get pods -n kube-system|grep -iE "kube-dns|name"
+  NAME                                                       READY   STATUS    RESTARTS   AGE
+  
+  # делаем попытку разрешения dns имя в ip с котключенным kube-dns, не работает, как и д.быть
+  kubectl exec -ti -n dev ui-795997c648-b7vsv nslookup comment
+  nslookup: can't resolve 'comment': Try again
+  command terminated with exit code 1
+  
+  #включаем kube-dns, проверяем, что поды есть
+  kubectl scale deployment --replicas 1 -n kube-system kube-dns-autoscaler
+  kubectl scale deployment --replicas 2 -n kube-system kube-dns
+  kubectl get pods -n kube-system|grep -iE "kube-dns|name"
+  NAME                                                       READY   STATUS    RESTARTS   AGE
+  kube-dns-autoscaler-76fcd5f658-gv2t4                       1/1     Running   0          4m23s
+  kube-dns-b46cc9485-4qrw5                                   4/4     Running   0          4m22s
+  kube-dns-b46cc9485-fjd6f                                   4/4     Running   0          4m21s
+  
+  ```
+
+## Network
+
+Kubernetes не имеет в комплекте механизма организации overlay-сетей (как у Docker Swarm). Он лишь предоставляет интерфейс  для этого. Для создания Overlay-сетей используются отдельные аддоны: Weave, Calico, Flannel, … . 
+
+В Google Kontainer Engine (GKE) используется собственный плагин kubenet (он - часть kubelet). Он работает только вместе с платформой GCP и, по-сути занимается тем, что настраивает google-сети для передачи трафика Kubernetes.
+
+В GKE правила,  согласно которым трафик отправляется на ноды можно в Сеть VPC-Маршруты: 
+
+https://console.cloud.google.com/networking/routes/
+
+Действиями с пакетами, принадлежащими тому или иному поду, занимается iptables, который настраивается утилитой kube-proxy (забирающей инфу с API-сервера).
+
+## LoadBalancer
+
+Тип NodePort хоть и предоставляет доступ к сервису снаружи, но открывать все порты наружу или искать IP-
+адреса наших нод (которые вообще динамические) не очень удобно. 
+
+- Скорректировали сервис ui в `kubernetes/reddit/ui-service.yml` как LoadBalancer вместо NodePort (параметр `nodePort: 32092` по сути больше не нужен) и применяем изменения
+
+```bash
+kubectl apply -n dev -f kubernetes/reddit/ui-service.yml
+
+#видим, что в соответствии с нашим описанием открыт 80 порт на балансировщике
+kubectl get service  -n dev --selector component=ui
+NAME   TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)        AGE
+ui     LoadBalancer   10.15.240.98   34.77.24.240   80:31232/TCP   43m
+
+```
+
+Теперь приложение доступно по адресу http://34.77.24.240
+
+Если в консоле GCP перейти в раздел Сетевые сервисы-Балансировка нагрузки (https://console.cloud.google.com/net-services/loadbalancing/loadBalancers/), увидим наш TCP балансировщик на 2 ноды (a7185ea2295a011e9964842010a840fd: TCP: 1 целевой пул (2 экземпляра) )
+
+```rst
+Интерфейсная ВМ
+Протокол 	IP-адрес: порт 	Уровень сети
+TCP 	34.77.24.240:80 	Премиум
+
+Серверная ВМ
+Название: a7185ea2295a011e9964842010a840fd Регион: europe-west1 Привязка сеанса: Не указано Проверка состояния: k8s-8d3d9a0abd3945f1-node
+Экземпляры 	                                   34.77.24.240
+gke-otus-cluster-1-my-node-pool-f8e8305d-dqfw  ok	
+gke-otus-cluster-1-my-node-pool-f8e8305d-jw9c  ok
+```
+
+Балансировка с помощью Service типа LoadBalancing имеет ряд недостатков: 
+
+1. нельзя управлять с помощью http URI (L7-балансировка)
+2. используются только облачные балансировщики (AWS, GCP) 
+3. нет гибких правил работы с трафиком
+
+## Ingress
+
+Управление входящим снаружи трафиком и решения недостатков LoadBalancer.
+
+Ingress – это набор правил внутри кластера Kubernetes, предназначенных для того, чтобы входящие подключения 
+могли достичь сервисов (Services) 
+
+Сами по себе Ingress’ы это просто правила. Для их применения нужен Ingress Controller. В отличие остальных контроллеров k8s - Ingress Controller не стартует вместе с кластером. 
+
+Ingress Controller - это скорее плагин (а значит и отдельный POD), который состоит из 2-х функциональных частей: 
+
+1. Приложение, которое отслеживает через k8s API новые объекты Ingress и обновляет конфигурацию балансировщика
+2. Балансировщик (Nginx, haproxy, traeﬁk,…), который и занимается управлением сетевым трафиком
+
+Основные задачи, решаемые с помощью Ingress’ов: 
+
+1. Организация единой точки входа в приложения снаружи
+2.  Обеспечение балансировки трафика
+3.  Терминация SSL
+4.  Виртуальный хостинг на основе имен и т.д
+
+Для работы с Ingress в GCP нам нужен минимум Service с типом NodePort.
+
+В GKE уже предоставляет возможность использовать их собственные решения балансирощик в качестве Ingress 
+controller-ов, убедиться можно следующим образом, идем в кластер kubernetes, под разделом Ярлыки разворачиваем Дополнения и должны увидеть` Балансировка нагрузки HTTP: Включено  `.
+
+- Создал Ingress для сервиса UI в файле `kubernetes\reddit\ui-ingress.yml`, и применил правило
+
+  ```bash
+  kubectl get ingress --all-namespaces
+  No resources found.
+  
+  kubectl apply -n dev -f kubernetes/reddit/ui-ingress.yml
+  
+  kubectl get ingress --all-namespaces
+  NAMESPACE   NAME   HOSTS   ADDRESS         PORTS   AGE
+  dev         ui     *       34.98.122.156   80      2m24s
+  
+  ```
+
+  Если в консоли GCP перейти в раздел Сетевые сервисы-Балансировка нагрузки (https://console.cloud.google.com/net-services/loadbalancing/loadBalancers/), то увидим в добавок к TCP балансировщику на 2 ноды, еще один балансировшик, но уже HTTP (k8s-um-dev-ui--8d3d9a0abd3945f1 : HTTP : 2 серверные службы (1 группа экземпляров, 0 групп конечных точек сети))
+
+  ```rst
+  Клиентская часть
+  Протокол 	IP-адрес: порт 	Уровень сети
+  HTTP 	34.98.122.156:80 	Премиум
+  
+  Правила обработки хостов и путей
+  Хосты 	Пути 	Серверная часть
+  Все пути URL, для которых нет соответствия (по умолчанию) 	Все пути URL, для которых нет соответствия (по умолчанию) 	k8s-be-31232--8d3d9a0abd3945f1
+  
+  Серверная часть
+  Серверные службы
+  1. k8s-be-31232--8d3d9a0abd3945f1
+  Протокол конечной точки: HTTP Именованный порт: port31232 Время ожидания: 30 сек. Cloud CDN: отключен Проверка состояния: k8s-be-31232--8d3d9a0abd3945f1
+  Расширенные настройки
+  Название 	                Тип 	            Зона 	        Без сбоев 	Автомасштабирование 	Режим балансировки 	                        Доступная мощность
+  k8s-ig--8d3d9a0abd3945f1 	Группа экземпляров 	europe-west1-b 	2 / 2 	    Выкл. 	                Макс. запросов в секунду: 1 (на экземпляр) 	100%
+  ```
+
+  Теперь приложение доступно по адресу http://34.98.122.156/
+
+- Изменил сервис UI `kubernetes/reddit/ui-service.yml`, чтобы не было 2 балансировщика (LoadBalancer и Ingress), нужен только Ingress
+
+  ```bash
+  kubectl apply -n dev -f kubernetes/reddit/ui-service.yml
+  ```
+
+- Скорректировал Ingres для приложения UI к классическому правилу web проксирования
+
+  ```bash
+  kubectl apply -n dev -f kubernetes/reddit/ui-ingress.yml
+  ```
+
+  ```rst
+  Клиентская часть
+  Протокол 	IP-адрес: порт 	Уровень сети
+  HTTP 	34.98.122.156:80 	Премиум
+  
+  Правила обработки хостов и путей
+  Хосты 	Пути 	Серверная часть
+  Все пути URL, для которых нет соответствия (по умолчанию) 	Все пути URL, для которых нет соответствия (по умолчанию) 	k8s-be-31411--8d3d9a0abd3945f1
+  * 															/* 															k8s-be-31411--8d3d9a0abd3945f1
+  * 															/* 															k8s-be-32751--8d3d9a0abd3945f1
+  
+  Серверная часть
+  Серверные службы
+  1. k8s-be-31411--8d3d9a0abd3945f1
+  Протокол конечной точки: HTTP Именованный порт: port31411 Время ожидания: 30 сек. Cloud CDN: отключен Проверка состояния: k8s-be-31411--8d3d9a0abd3945f1
+  Расширенные настройки
+  Название 					Тип 				Зона 			Без сбоев 	Автомасштабирование 	Режим балансировки 							Доступная мощность
+  k8s-ig--8d3d9a0abd3945f1 	Группа экземпляров 	europe-west1-b 	2 / 2 		Выкл. 					Макс. запросов в секунду: 1 (на экземпляр) 	100%
+  2. k8s-be-32751--8d3d9a0abd3945f1
+  Протокол конечной точки: HTTP Именованный порт: port32751 Время ожидания: 30 сек. Cloud CDN: отключен Проверка состояния: k8s-be-32751--8d3d9a0abd3945f1
+  Расширенные настройки
+  Название 					Тип 				Зона 			Без сбоев 	Автомасштабирование 	Режим балансировки 							Доступная мощность
+  k8s-ig--8d3d9a0abd3945f1 	Группа экземпляров 	europe-west1-b 	2 / 2 		Выкл. 					Макс. запросов в секунду: 1 (на экземпляр) 	100%
+  ```
+
+  Создались 2 правила в соответствии с количеством NodePort в сервисах
+
+  ```
+  kubectl get services -o wide --all-namespaces|grep -iE "nodeport|name"
+  NAMESPACE     NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE    SELECTOR
+  dev           ui                     NodePort    10.15.240.98    <none>        9292:32751/TCP   112m   app=reddit,component=ui
+  kube-system   default-http-backend   NodePort    10.15.243.135   <none>        80:31411/TCP     121m   k8s-app=glbc
+  
+  ```
+
+  ```bash
+  kubectl get ingress -n dev
+  NAME   HOSTS   ADDRESS         PORTS   AGE
+  ui     *       34.98.122.156   80      12m
+  ```
+
+  Приложение так же доступно по адресу http://34.98.122.156/
+
+## Secret
+
+Будем прикручивать TLS
+
+- Создаем сертификат для ingress
+
+  ```bash
+  #узнаем IP
+  kubectl get ingress -n dev
+  NAME   HOSTS   ADDRESS         PORTS   AGE
+  ui     *       34.98.122.156   80      6h51m
+  
+  #генерируем сертификат на IP
+  cd kubernetes
+  openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout tls.key -out tls.crt -subj "/CN=34.98.122.156"
+  
+  ls -1 tls*
+  tls.crt
+  tls.key
+  
+  #загружаем сертификат в кластер
+  kubectl create secret tls ui-ingress --key tls.key --cert tls.crt -n dev
+  
+  #проверяем secret
+  kubectl describe secret ui-ingress -n dev
+  ----------
+  Name:         ui-ingress
+  Namespace:    dev
+  Labels:       <none>
+  Annotations:  <none>
+  
+  Type:  kubernetes.io/tls
+  
+  Data
+  ====
+  tls.crt:  1111 bytes
+  tls.key:  1704 bytes
+  ----------
+  
+  ```
+
+- Настроил Ingress на прием только HTTPS `kubernetes/reddit/ui-ingress.yml` и применяем
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/ui-ingress.yml -n dev
+  ```
+
+  В консоли GCP перейти в раздел Сетевые сервисы-Балансировка, балансировщик стал HTTP(S) (k8s-um-dev-ui--8d3d9a0abd3945f1 : HTTP(S) : 2 серверные службы (1 группа экземпляров, 0 групп конечных точек сети))
+
+  Если HTTP не удалился из балансировщика, нужно его пересоздать у меня не удалился, в балансировщике было:
+
+  ```rst
+  Клиентская часть
+  Протокол 	IP-адрес: порт 		Сертификат 		Уровень сети
+  HTTP 		34.98.122.156:80 	— 				Премиум
+  HTTPS 		34.98.99.25:443 	k8s-ssl-5714...	Премиум 
+  ```
+
+  ```bash
+  # Пересоздаем
+  kubectl delete ingress ui -n dev
+  kubectl apply -n dev -f kubernetes/reddit/ui-ingress.yml
+  
+  kubectl get ingress -n dev
+  NAME   HOSTS   ADDRESS       PORTS     AGE
+  ui     *       34.98.99.25   80, 443   6m22s
+  
+  openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout tls.key -out tls.crt -subj "/CN=34.98.99.25"
+  
+  kubectl delete secret ui-ingress -n dev
+  kubectl create secret tls ui-ingress --key tls.key --cert tls.crt -n dev
+  ```
+
+  Приложение доступно по адресу https://34.98.99.25
+
+- ### Задание со *
+
+  Описать создаваемый объект Secret в виде Kubernetes-манифеста.
+
+  Описан в файле `kubernetes/reddit/ui-ingress-secrets.yml`
+
+  ```bash
+  #генерируем kubernetes-манифест из команды в формат yml
+  cd kubernetes
+  kubectl create secret tls ui-ingress --key tls.key --cert tls.crt -n dev --dry-run=true  --output=yaml > reddit/ui-ingress-secrets.yml
+  
+  ```
+
+  Пригодится, генерация yaml https://stackoverflow.com/questions/36887946/how-to-set-secret-files-to-kubernetes-secrets-by-yaml
+
+## Network Policy
+
+В Kubernetes все POD-ы могут достучаться друг до друга по-умолчанию.
+
+Будем использовать NetworkPolicy - инструмент для декларативного описания потоков трафика. Отметим, что не все сетевые плагины поддерживают политики сети. В частности, у GKE эта функция пока в Beta-тесте и для её работы отдельно будет включен сетевой плагин Calico (вместо Kubenet).
+
+Задача: ограничить трафик, поступающий на mongodb отовсюду, кроме сервисов post и comment.
+
+```bash
+# определяем имя кластера и его размещение
+gcloud beta container clusters list
+
+# включаем network-policy для GKE
+# может быть предложено добавить beta-функционал в gcloud - нажмите yes.
+gcloud beta container clusters update otus-cluster-1 --zone=europe-west1-b --update-addons=NetworkPolicy=ENABLED
+gcloud beta container clusters update otus-cluster-1 --zone=europe-west1-b  --enable-network-policy
+```
+
+- Создает nerwork policy для mongo `kubernetes/reddit/mongo-network-policy.yml` и применим ее
+
+  > Разберем правила:
+  >
+  > Выбираем объекты политики (pod’ы с mongodb)
+  >
+  > ```yaml
+  > spec:
+  >   # Выбираем объекты
+  >   podSelector:
+  >     matchLabels:
+  >       app: reddit
+  >       component: mongo
+  > ```
+  >
+  > Запрещаем все входящие подключения. Исходящие разрешены.
+  >
+  > ```yaml
+  > spec:
+  > ...
+  >   # Блок запрещающих направлений
+  >   policyTypes:
+  >   - Ingress
+  > ```
+  >
+  > Разрешаем все входящие подключения от POD-ов с label-ами comment (post пока запрещен)
+  >
+  > ```yaml
+  > spec:
+  > ...
+  >   # Блок разрешающих правил (белый список)
+  >   ingress:
+  >   - from:
+  >     - podSelector:
+  >         matchLabels:
+  >           app: reddit
+  >           component: comment
+  > ```
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/mongo-network-policy.yml -n dev
+  
+  ```
+
+  Т.к. правило для post пока нет, т.е. он запрещен, в приложении должны были получить ошибку о наличии проблемы с post сервисом, т.к. он не может достучаться до базы, но почему то, все работало.
+
+  Добавлено правило для post сервиса.
+
+## Volumes
+
+ **Volume emptyDir** - при создании пода с таким типом просто создается пустой docker volume.  При остановке POD’a содержимое emtpyDir удалится навсегда. Хотя в общем случае падение POD’a не вызывает удаления Volume’a. 
+
+### Volume gcePersistentDisk - диск для каждого пода
+
+В нашем случае можем использовать Volume gcePersistentDisk, который будет складывать данные в хранилище GCE.
+
+```bash
+# Создадим диск в Google Cloud
+gcloud compute disks create --size=5GB --zone=europe-west1-b reddit-mongo-disk
+```
+
+Диск reddit-mongo-disk будет виден в Compute Engine - Диски.
+
+Добавим новый Volume POD-у базы `kubernetes/reddit/mongo-deployment.yml` и применим изменения
+
+```bash
+kubectl apply -f kubernetes/reddit/mongo-deployment.yml -n dev
+```
+
+Создаем пост, после этого переразворачиваем базу монги, пост не удалиться
+
+```bash
+# переразворачивание монги
+kubectl delete deploy mongo -n dev
+kubectl apply -f kubernetes/reddit/mongo-deployment.yml -n dev
+```
+
+### PersistentVolume - хранилище, общий для всего кластера
+
+В данном варианте при запуске Stateful-задач в кластере, мы сможем запросить хранилище в виде такого же ресурса, как CPU или оперативная память. 
+
+Создав PersistentVolume мы отделим объект "хранилища" от наших Service'ов и Pod'ов. И сможем его при 
+необходимости переиспользовать.
+
+- Создал PersistentVolume (**PV**) `kubernetes/reddit/mongo-volume.yml`, применил
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/mongo-volume.yml -n dev
+  ```
+
+- Создал описание PersistentVolumeClaim (**PVC**)
+
+  Чтобы выделить приложению часть такого ресурса - нужно создать запрос на выдачу - PersistentVolumeClaim. 
+  Claim - это именно запрос, а не само хранилище.
+
+  С помощью запроса можно выделить место как из конкретного PersistentVolume (тогда параметры accessModes и StorageClass должны соответствовать, а места должно хватать), так и просто создать отдельный PersistentVolume под конкретный запрос.
+
+  > accessMode у PVC и у PV должен совпадать
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/mongo-claim.yml -n dev
+  ```
+
+  Если Claim не найдет по заданным параметрам PV внутри кластера, либо тот будет занят другим Claim’ом то он сам создаст нужный ему PV воспользовавшись стандартным StorageClass:
+
+  ```bash
+  kubectl describe storageclass standard -n dev
+  ```
+
+- Подключил PersistentVolumeClaim  к mongo `kubernetes/reddit/mongo-deployment.yml`
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/mongo-deployment.yml -n dev
+  ```
+
+### StorageClass - динамическое выделение volume'ов
+
+Гораздо интереснее создавать хранилища при необходимости и в автоматическом режиме. В этом нам помогут StorageClass’ы. Они описывают где (какой провайдер) и какие хранилища создаются. 
+
+В нашей практике создадим StorageClass Fast так, чтобы монтировались SSD-диски для работы нашего хранилища.
+
+- Создал описание StorageClass’а, применил его
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/storage-fast.yml -n dev
+  ```
+
+- Создал описание PVC + StorageClass в `kubernetes/reddit/mongo-claim-dynamic.yml`, применил
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/mongo-claim-dynamic.yml -n dev
+  ```
+
+- Подключил динамический PVC к поду базы монги `kubernetes/reddit/mongo-deployment.yml`, применил
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/mongo-deployment.yml -n dev
+  ```
+
+### Анализ получившихся volumes
+
+```rst
+ubectl get persistentvolume -n dev
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM                   STORAGECLASS   REASON   AGE
+pvc-263012ab-9601-11e9-942a-42010a840155   5Gi        RWO            Delete           Bound       dev/mongo-pvc           standard                24m
+pvc-c97f128f-9603-11e9-942a-42010a840155   5Gi        RWO            Delete           Bound       dev/mongo-pvc-dynamic   fast                    5m59s
+reddit-mongo-disk                          10Gi       RWO            Retain           Available                                                   33m
+```
+
+Созданные диски в GCP можно увидеть в Compute Engine - Диски. 
+
+Запросы на выделение хранилища (Persistent Volume Claim) можно увидеть в Kubernetes Engine - Хранилище. 
