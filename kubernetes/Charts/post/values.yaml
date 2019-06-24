@@ -1,0 +1,10 @@
+---
+service:
+  internalPort: 5000
+  externalPort: 5000
+
+image:
+  repository: mnsoldotus/post
+  tag: latest
+
+databaseHost:
