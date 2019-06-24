@@ -2238,6 +2238,14 @@ gcloud beta container clusters update otus-cluster-1 --zone=europe-west1-b  --en
   Т.к. правило для post пока нет, т.е. он запрещен, в приложении должны были получить ошибку о наличии проблемы с post сервисом, т.к. он не может достучаться до базы, но почему то, все работало.
 
   Добавлено правило для post сервиса.
+  
+  > Замечание из группы в слаке от Igor Beliakov 24.06-2019 13:55:
+  >
+  > Update: отыскал в документации:
+  > "Network policy is not supported for clusters whose nodes are f1-micro or g1-small instances, as the resource requirements are too high for instances of that size."
+  > https://cloud.google.com/kubernetes-engine/docs/how-to/network-policy
+  > Очень плохо, что в слайдах об этом упоминания нет.
+  > Update2: пересоздал кластер на n1-standard-1, при создании сразу включил networkpolicies - ограничения заработали. (edited) 
 
 ## Volumes
 
