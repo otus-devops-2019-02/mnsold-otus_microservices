@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Service
 #name - уникальное имя ресурса, указываем релиз в метке
 metadata:
-  name: {{ .Release.Name }}-{{ .Chart.Name }}
+  name: {{ template "ui.fullname" . }}
   labels:
     app: reddit
     component: ui
