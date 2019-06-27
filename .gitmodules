@@ -1,0 +1,3 @@
+[submodule "kubernetes/Gitlab_ci/ui"]
+	path = kubernetes/Gitlab_ci/ui
+	url = http://gitlab-gitlab/mnsoldotus/ui.git
