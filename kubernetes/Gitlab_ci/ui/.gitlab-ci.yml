@@ -5,6 +5,7 @@ stages:
   - test
   - review
   - release
+  - deploy
   - cleanup
 
 build:
@@ -35,6 +36,15 @@ release:
   script:
     - setup_docker
     - release
+  only:
+    - master
+
+#вебхук для автоматического деплоя приложения в stage/prod
+trigger_deploy:
+  stage: deploy
+  script:
+    - install_dependencies
+    - "curl -X POST -F token=$REDDIT_TOKEN -F ref=master http://gitlab-gitlab/api/v4/projects/7/trigger/pipeline"
   only:
     - master
 
