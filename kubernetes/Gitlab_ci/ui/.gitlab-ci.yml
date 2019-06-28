@@ -1,4 +1,4 @@
-image:  alpine:latest
+image: alpine:latest
 
 stages:
   - build
@@ -122,7 +122,7 @@ stop_review:
     curl https://storage.googleapis.com/pub/gsutil.tar.gz | tar -xz -C $HOME
     export PATH=${PATH}:$HOME/gsutil
 
-    curl https://kubernetes-helm.storage.googleapis.com/helm-v2.9.1-linux-amd64.tar.gz | tar zx
+    curl https://kubernetes-helm.storage.googleapis.com/helm-v2.14.1-linux-amd64.tar.gz | tar zx
 
     mv linux-amd64/helm /usr/bin/
     helm version --client
