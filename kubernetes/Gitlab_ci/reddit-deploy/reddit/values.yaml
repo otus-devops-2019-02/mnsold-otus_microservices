@@ -1,0 +1,21 @@
+# эти переменные главного chart переопределят переменные из зависимых charts
+comment:
+  image:
+    repository: mnsoldotus/comment
+    tag: latest
+  service:
+    externalPort: 9292
+
+post:
+  image:
+    repository: mnsoldotus/post
+    tag: latest
+    service:
+      externalPort: 5000
+
+ui:
+  image:
+    repository: mnsoldotus/ui
+    tag: latest
+    service:
+      externalPort: 9292

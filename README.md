@@ -2238,6 +2238,14 @@ gcloud beta container clusters update otus-cluster-1 --zone=europe-west1-b  --en
   Т.к. правило для post пока нет, т.е. он запрещен, в приложении должны были получить ошибку о наличии проблемы с post сервисом, т.к. он не может достучаться до базы, но почему то, все работало.
 
   Добавлено правило для post сервиса.
+  
+  > Замечание из группы в слаке от Igor Beliakov 24.06-2019 13:55:
+  >
+  > Update: отыскал в документации:
+  > "Network policy is not supported for clusters whose nodes are f1-micro or g1-small instances, as the resource requirements are too high for instances of that size."
+  > https://cloud.google.com/kubernetes-engine/docs/how-to/network-policy
+  > Очень плохо, что в слайдах об этом упоминания нет.
+  > Update2: пересоздал кластер на n1-standard-1, при создании сразу включил networkpolicies - ограничения заработали. (edited) 
 
 ## Volumes
 
@@ -2343,3 +2351,763 @@ reddit-mongo-disk                          10Gi       RWO            Retain     
 Созданные диски в GCP можно увидеть в Compute Engine - Диски. 
 
 Запросы на выделение хранилища (Persistent Volume Claim) можно увидеть в Kubernetes Engine - Хранилище. 
+
+
+
+
+# ДЗ №28
+
+## Helm
+
+Helm - пакетный менеджер для Kubernetes.  
+
+Helm читает конфигурацию kubectl  (~/.kube/config) и сам определяет текущий контекст. Сменить контекст: `kubectl config use-context <context-name>`
+
+Tiller - это аддон Kubernetes, т.е. Pod, который общается с API Kubernetes. Для этого понадобится ему выдать ServiceAccount и назначить роли RBAC, необходимые для работы.
+
+### Установка Helm/Tiller
+
+- Установил Helm
+
+Версии helm https://github.com/helm/helm/releases
+
+```bash
+cd /tmp
+wget https://get.helm.sh/helm-v2.14.1-linux-amd64.tar.gz
+tar -xvzf helm-v2.14.1-linux-amd64.tar.gz
+sudo mv linux-amd64/helm linux-amd64/tiller /usr/local/bin/
+rm -R linux-amd64
+
+helm version
+Client: &version.Version{SemVer:"v2.14.1"
+```
+
+- Установил серверную часть Helm - Tiller
+
+  Создан манифест по созданию сервисного аккаунта и выдаче привилегий в `kubernetes/reddit/kubernetes-tiller.yml` и применил его
+
+  ```bash
+  kubectl apply -f kubernetes/reddit/kubernetes-tiller.yml
+  ```
+
+  Запустил tiller сервер
+
+  ```bash
+  # запуск
+  helm init --service-account tiller
+  
+  # проверка
+  kubectl get pods -n kube-system --selector app=helm
+  NAME                             READY   STATUS    RESTARTS   AGE
+  tiller-deploy-7b659b7fbd-2ls2w   1/1     Running   0          29s
+  
+  ```
+
+## Удалим приложение
+
+```bash
+kubectl delete secret -n dev ui-ingress
+kubectl delete ingress -n dev ui
+
+kubectl delete services -n dev comment
+kubectl delete services -n dev comment-db
+kubectl delete services -n dev mongodb
+kubectl delete services -n dev post
+kubectl delete services -n dev post-db
+kubectl delete services -n dev ui
+
+kubectl delete deployments -n dev comment
+kubectl delete deployments -n dev mongo
+kubectl delete deployments -n dev post
+kubectl delete deployments -n dev ui
+```
+
+
+
+## Charts
+
+Chart - это пакет в Helm
+
+Основным  содержимым  Chart’ов  являются  шаблоны манифестов Kubernetes.
+
+###Charts UI
+
+- Создан `kubernetes/Charts/ui/Chart.yaml`
+
+- Манифесты для UI скопированы в `kubernetes/Charts/ui/templates` (ui-service, ui-deployment, ui-ingress) (кроме secrets)
+
+- Установил Chart UI
+
+  ```bash
+  #установка chart
+  helm install --name test-ui-1 kubernetes/Charts/ui
+  
+  #проверка
+  helm ls
+  NAME            REVISION        UPDATED                         STATUS          CHART           APP VERSION     NAMESPACE
+  test-ui-1       1               Mon Jun 24 22:30:24 2019        DEPLOYED        ui-1.0.0        1               default
+  ```
+
+- Шаблонизируем `kubernetes/Charts/ui/templates/service.yaml` чтобы можно было его использовать для нескольких релизов
+
+  Используем встроенные переменные:
+
+  - .Release - группа переменных с информацией о релизе (конкретном запуске Chart’а в k8s)
+  - .Chart - группа переменных с информацией о Chart’е (содержимое файла Chart.yaml)
+
+  Есть группы переменных:
+
+  - .Template - информация о текущем шаблоне ( .Name и .BasePath)
+  - .Capabilities - информация о Kubernetes (версия, версии API) 
+  - .Files.Get - получить содержимое файла
+
+- Аналогично шаблонизируем др. yaml файлы UI
+
+- Обновляем chart и устанавливаем
+
+  ```bash
+  # было
+  kubectl get ingress
+  NAME   HOSTS   ADDRESS   PORTS     AGE
+  ui     *                 80, 443   52m
+  
+  helm ls
+  NAME            REVISION        UPDATED                         STATUS          CHART           APP VERSION     NAMESPACE
+  test-ui-1       1               Mon Jun 24 22:30:24 2019        DEPLOYED        ui-1.0.0        1               default
+  
+  ```
+
+  
+
+  ```bash
+  #эти команды не пройдут, т.к. до этого мы ставили 'test-ui-1', а не 'ui-N'
+  helm upgrade ui-1 kubernetes/Charts/ui
+  helm upgrade ui-2 kubernetes/Charts/ui
+  
+  #посмотреть все helm charts (в том числе удаленные без опции --purge)
+  helm ls --all
+  
+  #поэтому удаляем
+  helm delete test-ui-1 --purge
+  
+  #и ставим начисто
+  helm install kubernetes/Charts/ui --name ui-1 
+  helm install kubernetes/Charts/ui --name ui-2 
+  
+  #проверяем
+  helm ls
+  NAME    REVISION        UPDATED                         STATUS          CHART           APP VERSION     NAMESPACE
+  ui-1    1               Mon Jun 24 23:29:59 2019        DEPLOYED        ui-1.0.0        1               default
+  ui-2    1               Mon Jun 24 23:30:28 2019        DEPLOYED        ui-1.0.0        1               default
+  
+  kubectl get ingress
+  NAME      HOSTS   ADDRESS         PORTS   AGE
+  ui-1-ui   *       34.98.122.156   80      102s
+  ui-2-ui   *       34.96.92.68     80      73s
+  
+  ```
+
+  Приложение будет доступно на каждом из ingress.
+
+- Дополнительно шаблонизировали параметрами:
+
+  - {{ .Values.service.externalPort }}
+  - {{ .Values.service.internalPort }}
+  - "{{ .Values.image.repository }}/ui:{{ .Values.image.tag }}"
+
+  Применяем изменения
+
+  ```bash
+  #дальше пробую только с ui-1, е в крайнем случае буду подключать ui-2
+  helm delete ui-1 --purge
+  
+  ```
+
+helm upgrade ui-1 kubernetes/Charts/ui
+  ```
+
+  В результате поды будут пересозданы
+  
+  ```rst
+  #кусок вывода команды helm upgrade
+  ==> v1/Pod(related)
+  NAME                      READY  STATUS       RESTARTS  AGE
+  ui-1-ui-5c884c68f5-m2gpz  1/1    Terminating  0         15m
+  ui-1-ui-5c884c68f5-scbzl  1/1    Terminating  0         15m
+  
+  #будет видно, что дата+время в UPDATED изменилась
+  helm ls
+  NAME    REVISION        UPDATED                         STATUS          CHART           APP VERSION     NAMESPACE
+  ui-1    2               Mon Jun 24 23:44:59 2019        DEPLOYED        ui-1.0.0        1               default
+  ```
+
+### Charts POST
+
+Выполняем аналогичные действия как в charts ui, `kubernetes/Charts/post`
+
+БД  задана через  переменную databaseHost. Использована функция default.  Если databaseHost не будет определена  или ее значение будет пустым, то используется вывод  функции  printf  (которая  просто  формирует  строку  <имя-релиза>-mongodb).
+
+### Charts COMMENTS
+
+Выполняем аналогичные действия как в charts ui, `kubernetes/Charts/comment`
+
+### Функции Helper
+
+Helper  -  это  написанная  нами функция. В функция описывается, как правило, сложная логика. Шаблоны этих функция располагаются в файле `/templates/_helpers.tpl`.
+
+Структура функции: `name: {{ template "comment.fullname" comment.fullname }}`
+
+
+
+| Часть функции      | Описание                                                     |
+| ------------------ | ------------------------------------------------------------ |
+| `template`         | Функция template                                             |
+| `comment.fullname` | Название функции для импорта                                 |
+| `.`                | Область видимости. Если указать `.Chart` - тогда `.Values` не будут доступны внутри функции |
+
+- Добавлена функция в `_helpers.tpl` в `kubernetes/Charts/comment/templates`  `kubernetes/Charts/post/templates`  `kubernetes/Charts/ui/templates` 
+- Изменен `name` в метаданных `service.yaml` в `kubernetes/Charts/comment/templates/` `kubernetes/Charts/post/templates/` `kubernetes/Charts/ui/templates/` на использование функции.
+
+### Helm Carts - управление зависимостями
+
+создали Chart’ы для каждой компоненты нашего приложения. Каждый из них можно запустить по-отдельности командой
+```bash
+helm install <chart-path> <release-name>
+```
+Компоненты приложения будут запускаться в разных релизах, и не будут видеть друг друга.
+
+С помощью механизма управления зависимостями создаем единый Chart reddit, который объединит наши компоненты.
+
+- Добавил `Chart.yaml`  `requirements.yml` и пустой `values.yaml` в `kubernetes/Charts/reddit/`
+
+- Загружаем зависимости
+
+  > когда Chart’ не упакован в tgz архив
+  
+  ```bash
+  #или в конечной директории без указания пути
+helm dep update kubernetes/Charts/reddit
+  ```
+  
+  Появится файл requirements.lock с фиксацией зависимостей и будет создана директория charts с зависимостями в виде архивов.
+  
+- Создаем Chart для БД из общедоступного репозитория
+
+  Ищем Charts
+
+  ```bash
+  helm search mongo
+  NAME                                    CHART VERSION   APP VERSION     DESCRIPTION
+  stable/mongodb                          5.20.0          4.0.10          NoSQL document-oriented database that stores JSON-like do...
+  stable/mongodb-replicaset               3.9.6           3.6             NoSQL document-oriented database that stores JSON-like do...
+  stable/prometheus-mongodb-exporter      2.1.0           v0.7.0          A Prometheus exporter for MongoDB metrics
+  stable/unifi                            0.4.2           5.10.19         Ubiquiti Network's Unifi Controller
+  ```
+
+  > ! С версией mongodb 5.20.0 не взлетело, откатился на версию из практики 0.4.18
+
+  В `kubernetes/Charts/reddit/requirements.yaml` добавляем зависимости для mongo: ` - name: mongodb`
+
+  И выгружаем зависимости с добавленной mongo
+
+  ```bash
+  helm dep update kubernetes/Charts/reddit
+  ```
+
+- Попытка установки приложения
+
+  ```bash
+  helm install --name reddit-test kubernetes/Charts/reddit
+  
+  #проверяем
+  kubectl get ingress
+  NAME             HOSTS   ADDRESS       PORTS   AGE
+  reddit-test-ui   *       34.96.92.68   80      79s
+  
+  ```
+
+- Для нормальной работы приложения еще не указали как UI-сервис будет искать сервисы post и comment
+
+  Нужно передать переменные окружения хост и порт, которые есть в докер образе UI.
+
+  Добавляем в файл `kubernetes/Charts/ui/templates/deployment.yaml`  эти переменные со значениями по умолчанию:
+
+  ```rst
+  POST_SERVICE_HOST
+  POST_SERVICE_PORT
+  COMMENT_SERVICE_HOST
+  COMMENT_SERVICE_PORT
+  ```
+
+  И в файл`kubernetes/Charts/ui/values.yaml` ,что такие переменные используются, они там пустые, и вообще могут быть закомментированы, т.к. есть значение по умолчанию в деплойменте, просто для справки, что есть есть такие переменные.
+
+- Переопределим переменные из зависимых чартов в файле переменных главного чарта `kubernetes/Charts/reddit/values.yaml`
+
+### Разворачиваем приложение
+
+- Обновляем  зависимости  чарта reddit.
+
+  ```bash
+  helm dep update kubernetes/Charts/reddit
+  ```
+
+- Проверяем имя нашего приложения
+
+  ```bash
+  helm ls
+  NAME            REVISION        UPDATED                         STATUS          CHART           APP VERSION     NAMESPACE
+  reddit-test     1               Wed Jun 26 22:41:04 2019        DEPLOYED        reddit-0.1.0                    default
+  ```
+
+- Обновляем приложение в k8s
+
+```bash
+  # обновление
+  helm upgrade reddit-test kubernetes/Charts/reddit
+  
+  #установка
+  helm install --name reddit-test kubernetes/Charts/reddit
+```
+
+
+
+## GitLab + Kubernetes
+
+###Установка GitLab via helm
+
+- Подготовил GKE-кластер для развертывания GitLab
+
+  Пул узлов: bigpool - 1 узел типа n2-standard-2 (7,5 Гб, 2 виртуальных ЦП), HDD 40Гб
+
+  Устаревшие права доступа: Да
+
+- Добавил репозиторий Gitlab в helm
+
+  ```bash
+  helm repo add gitlab https://charts.gitlab.io
+  
+  #проверка
+  helm repo list|grep -iE "gitlab|name"
+  NAME    URL
+  gitlab  https://charts.gitlab.io
+  
+  ```
+
+- Скачиваем chart gitlab, т.к. будем менять конфигурацию
+
+  ```bash
+  cd kubernetes/Charts
+  helm fetch gitlab/gitlab-omnibus  --version 0.1.37 --untar
+  ```
+
+  Правим `kubernetes/Charts/gitlab-omnibus/values.yaml`
+
+  ```rst
+  baseDomain: example.com
+  legoEmail: mnsold.otus@gmail.com
+  ```
+
+  Добавляем в `kubernetes/Charts/gitlab-omnibus/templates/gitlab/gitlab-svc.yaml` блок:
+
+  > ssh/mattermost/registry/workhorse/prometheus уже были в шаблоне
+
+  ```
+  - name: web
+  ...
+  ```
+
+  Правим `kubernetes/Charts/gitlab-omnibus/templates/gitlab-config.yaml`
+
+  ```yaml
+  apiVersion: v1
+  kind: ConfigMap
+  data:
+    external_scheme: http
+    external_hostname: {{ template "fullname" . }}
+  ```
+
+  Правим `kubernetes/Charts/gitlab-omnibus/templates/ingress/gitlab-ingress.yaml`
+
+  ```yaml
+  apiVersion: extensions/v1beta1
+  kind: Ingress
+  ...
+  spec:
+    tls:
+    ...
+    rules:
+    - host: {{ template "fullname" . }}
+  ```
+
+- Установил gitlab
+
+  ```bash
+  helm install --name gitlab kubernetes/Charts/gitlab-omnibus -f kubernetes/Charts/gitlab-omnibus/values.yaml
+  
+  #Получаем nginx-ingress
+  kubectl get service -n nginx-ingress nginx
+  
+  NAME    TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)                                   AGE
+  nginx   LoadBalancer   10.15.247.13   35.195.176.214   80:32247/TCP,443:31740/TCP,22:30969/TCP   83s
+  
+  
+  #Добавляем IP в /etc/hosts
+  sudo su -c 'echo "35.195.176.214 gitlab-gitlab staging production" >> /etc/hosts'
+   
+  #Проверяем, поднялся ли GitLab
+  kubectl get pods
+  ```
+
+  GitLab будет доступен по адресу http://gitlab-gitlab, пользователь root
+
+### Gitlab запуск проекта
+
+- Создана группа с названием моего пользователя в dockerhub - mnsoldotus
+
+  Visibility Level - public, Create a Mattermost team for this group - disable
+
+- В разделе mnsoldotus > CI / CD Settings добавляем переменные
+
+  ```rst
+  CI_REGISTRY_USER - логин dockerhub
+  CI_REGISTRY_PASSWORD - пароль
+  ```
+
+  > Если переменная с паролем protected, пайплайн вываливатся с ошибкой на этапе аутентификации в docker hub.
+
+- В группе созданы **публичные** проекты
+
+  reddit-deploy, ui, post, coomment
+
+- Локально воссоздана структура
+
+  ```rst
+  cd kubernetes
+  
+  Gitlab_ci
+     comment
+     post
+     reddit-deploy
+     ui
+  ```
+
+  Перенесен код сервиса UI , POST, COMMENT
+
+  ```bash
+  cp -r src/ui/* kubernetes/Gitlab_ci/ui/
+  cp -r src/post-py/* kubernetes/Gitlab_ci/post/
+  cp -r src/comment/* kubernetes/Gitlab_ci/comment/
+  ```
+
+- Инициализируем git-репозиторий, на примере UI
+
+  ```bash
+  cd kubernetes/Gitlab_ci/ui
+  
+  #инициализация
+  git init
+  #добавляем удаленную репу
+  git remote add origin http://gitlab-gitlab/mnsoldotus/ui.git
+  
+  #коммитим в gitlab
+  git add .
+  git commit -m "init"
+  git push origin master
+  ```
+
+- Перенос директорий  ui, post, comment, reddit из Charts в Gitlab_ci/reddit-deploy и отправить на сервер Git
+
+  ```bash
+  cp -r kubernetes/Charts/comment kubernetes/Charts/post kubernetes/Charts/ui kubernetes/Charts/reddit kubernetes/Gitlab_ci/reddit-deploy/
+  
+  cd kubernetes/Gitlab_ci/reddit-deploy/
+  #инициализация
+  git init
+  #добавляем удаленную репу
+  git remote add origin http://gitlab-gitlab/mnsoldotus/reddit-deploy.git
+  
+  #коммитим в gitlab
+  git add .
+  git commit -m "init"
+  git push origin master
+  ```
+
+
+
+## Настройка CI
+
+Требуемые операции вызываются в блоках script:
+
+```yaml
+ script:
+    - setup_docker
+    - build
+```
+
+Описание самих операций производится в виде bash-функций в блоке .auto_devops в файле `kubernetes/Gitlab_ci/reddit-deploy/ui/.gitlab-ci.yml` (добавится ниже)
+
+```yaml
+.auto_devops: &auto_devops | 
+ 
+ function setup_docker() { 
+… 
+  } 
+ 
+  function release() { 
+… 
+  } 
+ 
+  function build() { 
+… 
+}
+```
+
+- Обеспечиваем возможность запускать отдельное окружение в Kubernetes по коммиту в feature-бранч
+
+  - корректируем файлы ингреса `kubernetes/Gitlab_ci/reddit-deploy/ui/templates/ingress.yaml` и `kubernetes/Gitlab_ci/reddit-deploy/ui/values.yaml`
+
+    И пушим в наш гит
+
+    ```bash
+    cd kubernetes/Gitlab_ci/reddit-deploy
+    git commit -am "Change ingres for feature" 
+    git push origin
+    ```
+
+  - создаем бранч feature/3 и делаем изменения в нем
+
+    ```bash
+    cd kubernetes/Gitlab_ci/ui
+    git checkout -b feature/3
+    ```
+
+    
+
+  - Добавляем `kubernetes/Gitlab_ci/ui/.gitlab-ci.yml`
+
+    > В `kubernetes/Gitlab_ci/reddit-deploy/ui/.gitlab-ci.yml` 
+    >
+    > - добавлена стадия review, запускающая приложение в k8s по коммиту в feature-бранчи (не master).
+    > - добавлена функция deploy, которая загружает Chart из репозитория reddit-deploy и делает релиз в неймспейсе review с образом приложения, собранным на стадии build.
+    > - т.е. эти окружения временные, и их нужно убивать руками когда они не нужны, для этого добавлен `stop_review:` c `stage: cleanup` и упоминание о нем в `review:` `on_stop: stop_review`
+    > - для удаления окружения служит функция `function delete()` в блоке `.auto_devops`
+
+  - Пушим в наш гит
+
+    ```bash
+    cd kubernetes/Gitlab_ci/ui
+    git commit -am "Add review and cleanup feature" 
+    git push origin feature/3
+    ```
+
+    > Тесты валятся:
+    >
+    > ```bash
+    > Checking Tiller...
+    > Creating /root/.helm 
+    > Creating /root/.helm/repository 
+    > Creating /root/.helm/repository/cache 
+    > Creating /root/.helm/repository/local 
+    > Creating /root/.helm/plugins 
+    > Creating /root/.helm/starters 
+    > Creating /root/.helm/cache/archive 
+    > Creating /root/.helm/repository/repositories.yaml 
+    > Adding stable repo with URL: https://kubernetes-charts.storage.googleapis.com 
+    > Adding local repo with URL: http://127.0.0.1:8879/charts 
+    > $HELM_HOME has been configured at /root/.helm.
+    > Error: error when upgrading: current Tiller version is newer, use --force-upgrade to downgrade
+    > ```
+    >
+    > Варианты решения (для себя выбрал решение 1+3, типа нужная версия и обновится при необходимости:
+    >
+    > - 1) в `function install_tiller()` добавить --force-upgrade: `helm init --upgrade --force-upgrade`
+    >
+    >   ! Нужно учесть, что например в версии 2.7.2, нет такой опции --force-upgrade
+    >
+    >   ! Поэтому ставим этот флаг в зависимости от используемой версии
+    >
+    > При таком варианте на у себя на компе придется менять версию helm, иначе получал ошибку: Error: incompatible versions client[v2.14.1] server[v2.9.1]
+    >
+    > ```bash
+    > cd /tmp
+    > wget https://get.helm.sh/helm-v2.9.1-linux-amd64.tar.gz
+    > tar -xvzf helm-v2.9.1-linux-amd64.tar.gz
+    > sudo mv linux-amd64/helm linux-amd64/tiller /usr/local/bin/
+    > rm -R linux-amd64
+    > 
+    > helm version
+    > Client: &version.Version{SemVer:"v2.9.1", GitCommit:"20adb27c7c5868466912eebdf6664e7390ebe710", GitTreeState:"clean"}
+    > 
+    > ```
+    >
+    > - 2) в function install_tiller() убрать опцию --upgrade
+    > - 3) в файлах `.gitlab-ci.yml` в `function install_dependencies()` указать нужную версию helm: `curl https://kubernetes-helm.storage.googleapis.com/helm-v2.14.1-linux-amd64.tar.gz | tar zx`
+
+- Проверка
+
+  ```bash
+  helm ls|grep -iE "otus|name"
+  NAME                            REVISION        UPDATED                         STATUS          CHART                   NAMESPACE
+  review-mnsoldotus-e4w862        1               Fri Jun 28 01:47:38 2019        DEPLOYED        reddit-0.1.0            review
+  
+  
+  
+  helm status review-mnsoldotus-e4w862
+  LAST DEPLOYED: Fri Jun 28 01:47:38 2019
+  NAMESPACE: review
+  STATUS: DEPLOYED
+  
+  RESOURCES:
+  ==> v1/Service
+  NAME                              TYPE       CLUSTER-IP     EXTERNAL-IP  PORT(S)         AGE
+  review-mnsoldotus-e4w862-comment  ClusterIP  10.15.241.145  <none>       9292/TCP        2m
+  review-mnsoldotus-e4w862-mongodb  ClusterIP  10.15.241.191  <none>       27017/TCP       2m
+  review-mnsoldotus-e4w862-post     ClusterIP  10.15.255.43   <none>       5000/TCP        2m
+  review-mnsoldotus-e4w862-ui       NodePort   10.15.244.62   <none>       9292:31767/TCP  2m
+  
+  ==> v1beta2/Deployment
+  NAME                              DESIRED  CURRENT  UP-TO-DATE  AVAILABLE  AGE
+  review-mnsoldotus-e4w862-comment  1        1        1           1          2m
+  review-mnsoldotus-e4w862-post     1        1        1           1          2m
+  
+  ==> v1beta1/Deployment
+  review-mnsoldotus-e4w862-mongodb  1  1  1  1  2m
+  review-mnsoldotus-e4w862-ui       1  1  1  1  2m
+  
+  ==> v1beta1/Ingress
+  NAME                         HOSTS                    ADDRESS           PORTS  AGE
+  review-mnsoldotus-e4w862-ui  mnsoldotus-ui-feature-3  34.76.239.6,3...  80     2m
+  
+  ==> v1/Pod(related)
+  NAME                                               READY  STATUS   RESTARTS  AGE
+  review-mnsoldotus-e4w862-comment-6998df48b9-8jl6m  1/1    Running  0         2m
+  review-mnsoldotus-e4w862-mongodb-58f548db86-h2dxr  1/1    Running  0         2m
+  review-mnsoldotus-e4w862-post-7f974d99d6-ljsxj     1/1    Running  0         2m
+  review-mnsoldotus-e4w862-ui-846c45448d-wz4np       1/1    Running  0         2m
+  
+  ==> v1/Secret
+  NAME                              TYPE    DATA  AGE
+  review-mnsoldotus-e4w862-mongodb  Opaque  2     2m
+  
+  ==> v1/PersistentVolumeClaim
+  NAME                              STATUS  VOLUME                                    CAPACITY  ACCESS MODES  STORAGECLASS  AGE
+  review-mnsoldotus-e4w862-mongodb  Bound   pvc-904dee6d-992d-11e9-a66c-42010a8401c9  8Gi       RWO           standard      2m
+  
+  ```
+
+  ```bash
+  kubectl get service -n nginx-ingress nginx
+  NAME    TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)                                   AGE
+  nginx   LoadBalancer   10.15.247.13   35.195.176.214   80:32247/TCP,443:31740/TCP,22:30969/TCP   83s
+  
+  #Добавляем IP в /etc/hosts (это тот же ip gita с его nginx-ingress)
+  sudo su -c 'echo "35.195.176.214 mnsoldotus-ui-feature-3" >> /etc/hosts'
+  ```
+
+  Приложение будут по ссылке http://mnsoldotus-ui-feature-3/
+
+- Настройка на staging и production среды 
+
+  Добавил `kubernetes/Gitlab_ci/reddit-deploy/.gitlab-ci.yml`
+
+  > !!! Сразу делаем фикс по версии helm на v2.14.1 в curl и добавляем --force-upgrade `helm init --upgrade --force-upgrade`.  Как делать подробно описано чуть выше (и нюансы от версий тоже).
+  >
+  > Чуть ниже будут еще правки для этой версии, чтобы успешно разворачивалось приложение в stage/prod.
+  
+  Этот файл отличается от предыдущих тем, что:
+  
+  - Не собирает docker-образы
+  
+  - Деплоит на статичные окружения (staging и production)
+  
+  - Не удаляет окружения
+  
+  Пушим его в репозиторий reddit-deploy ветку master нашего GitLab сервера
+  
+  > Для прохождения успешного развертывания по коммиту нужно:
+  >
+  > 1. С предыдущего ДЗ нужен диск подключенный к mongo.
+  >
+  >    Иначе будет падать с ошибкой:
+  >
+  >    ```rst
+  >    Error: error validating "": error validating data: field spec.dataSource for v1.PersistentVolumeClaimSpec is required
+  >    ```
+  >
+  >    Добавляем диск
+  >
+  >    ```bash
+  >    gcloud compute disks create --size=5GB --zone=europe-west1-b reddit-mongo-disk
+  >    kubectl apply -f kubernetes/reddit/dev-namespace.yml
+  >    kubectl apply -f kubernetes/reddit/mongo-volume.yml -n dev
+  >    kubectl apply -f kubernetes/reddit/mongo-claim.yml -n dev
+  >    kubectl apply -f kubernetes/reddit/mongo-deployment.yml -n dev
+  >    ```
+  >
+  > 2. Не работает команда "helm upgrade --install" в версии 2.8  и выше
+  >
+  >    Дискуссия на эту тему https://github.com/helm/helm/issues/3208
+  >
+  >    - Версия 2.7.2 приводила к ошибке, хотя диски были добавлены (в 2.14.1 с этим проблем не было)
+  >
+  >      ```rst
+  >      Error: UPGRADE FAILED: error validating "": error validating data: field spec.dataSource for v1.PersistentVolumeClaimSpec is required
+  >      ```
+  >
+  >    - Версия 2.14.1 с флагом --wait, а так же добавленными флагами --force --timeout 900 приводила к ошибке
+  >
+  >      ```rst
+  >      PGRADE FAILED
+  >      Error: "staging" has no deployed releases
+  >      Error: UPGRADE FAILED: "staging" has no deployed releases
+  >      ```
+  >
+  >    - В итоге: убрал флаг `--wait`, а так же добавленный флаг `--timeout 900`, но добавил `--force`, чтобы приложение успешно разворачивалось на сломанный деплой, иначе деплой не разворачивается и валится с ошибкой
+  >
+  >      ```rst
+  >      UPGRADE FAILED
+  >      Error: "staging" has no deployed releases
+  >      ```
+  
+  После успешного деплоя окружение появится в разделе `mnsoldotus > reddit-deploy > Pipelines > Environments`
+  
+  Через некоторое время можно будет нажать на кнопки с ссылками в Environments для перехода в http://staging/ http://production/ 
+  
+- Скопировал файлы `.gitlab-ci.yml`
+
+  ```rst
+  kubernetes/Gitlab_ci/reddit-deploy/.gitlab-ci.yml -> kubernetes/Charts/.gitlab-ci.yml
+  
+  kubernetes/Gitlab_ci/comment/.gitlab-ci.yml -> src/comment/.gitlab-ci.yml
+  kubernetes/Gitlab_ci/post/.gitlab-ci.yml -> src/post-py/.gitlab-ci.yml
+  kubernetes/Gitlab_ci/ui/.gitlab-ci.yml -> src/ui/.gitlab-ci.yml
+  ```
+
+## Задание со *
+
+В разделе `mnsoldotus > reddit-deploy > CI / CD Settings` добавил триггер `deploy,` к нему автоматически сгенерировался токен.
+
+В разделе `mnsoldotus > ui > CI / CD Settings` добавил данный токен в переменную `REDDIT_TOKEN` (в репозиториях post/comment нужно проделать аналогичное действие)
+
+В `kubernetes/Gitlab_ci/ui/.gitlab-ci.yml` добавил webhook (в .gitlab-ci.yml post/comment нужно проделать аналогичное действие)
+
+> install_dependencies нужен для установки curl
+
+```yaml
+#добавил выполнения шага deploy
+stages:
+  ...
+  - release
+  - deploy
+
+#сам шаг deploy
+trigger_deploy:
+  stage: deploy
+  script:
+    - install_dependencies
+    - "curl -X POST -F token=$REDDIT_TOKEN -F ref=master http://gitlab-gitlab/api/v4/projects/7/trigger/pipeline"
+  only:
+    - master
+```
+
+Теперь при пул реквесте в ветку мастер последним этапом будет запускаться webhook, который запускает пайплайн из репозитория `reddit-deploy`по деплою приложения в stage/prod .
