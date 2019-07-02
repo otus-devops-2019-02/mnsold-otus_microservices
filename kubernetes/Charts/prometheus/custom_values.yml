@@ -811,9 +811,9 @@ serverFiles:
         kubernetes_sd_configs:
           - role: endpoints
         relabel_configs:
-          - source_labels: [__meta_kubernetes_service_label_app]
+          - source_labels: [__meta_kubernetes_service_label_app, __meta_kubernetes_namespace]
             action: keep
-            regex: reddit
+            regex: reddit;(production|staging)+
           - action: labelmap
             regex: __meta_kubernetes_service_label_(.+)
           - source_labels: [__meta_kubernetes_namespace]
