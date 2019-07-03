@@ -4,7 +4,7 @@ rbac:
 alertmanager:
   ## If false, alertmanager will not be installed
   ##
-  enabled: false
+  enabled: true
 
   # Defines the serviceAccountName to use when `rbac.create=false`
   serviceAccountName: default
@@ -17,7 +17,7 @@ alertmanager:
   ##
   image:
     repository: prom/alertmanager
-    tag: v0.10.0
+    tag: v0.17.0
     pullPolicy: IfNotPresent
 
   ## Additional alertmanager container arguments
@@ -569,24 +569,57 @@ pushgateway:
 alertmanagerFiles:
   alertmanager.yml: |-
     global:
-      # slack_api_url: ''
-
-    receivers:
-      - name: default-receiver
-        # slack_configs:
-        #  - channel: '@you'
-        #    send_resolved: true
+      slack_api_url: 'https://hooks.slack.com/services/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'
 
     route:
-      group_wait: 10s
-      group_interval: 5m
-      receiver: default-receiver
-      repeat_interval: 3h
+      receiver: 'slack-notifications'
+
+    receivers:
+    - name: 'slack-notifications'
+      slack_configs:
+      - channel: '#maksim_soldatov'
 
 ## Prometheus server ConfigMap entries
 ##
 serverFiles:
-  alerts: {}
+  ## Alerts configuration
+  ## Ref: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+  #alerts:
+  # groups:
+  #   - name: Instances
+  #     rules:
+  #       - alert: InstanceDown
+  #         expr: up == 0
+  #         for: 5m
+  #         labels:
+  #           severity: page
+  #         annotations:
+  #           description: '{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 5 minutes.'
+  #           summary: 'Instance {{ $labels.instance }} down'
+  alerts:
+    groups:
+    - name: Instances
+      rules:
+      - alert: InstanceDown
+        #expr: avg(up{job="kubernetes-nodes"}) BY (job) < 0.25 <--25% узлов не доступно https://www.robustperception.io/alerting-on-down-instances
+        expr: up{job="kubernetes-nodes"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          description: '{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minutes'
+          summary: 'Instance {{ $labels.instance }} down'
+    - name: APIServers
+      rules:
+      - alert: InstanceAPIServerDown
+        expr: up{job="kubernetes-apiservers"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          description: '{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute'
+          summary: 'Instance API server {{ $labels.instance }} down'
+
   rules: {}
 
   prometheus.yml:
