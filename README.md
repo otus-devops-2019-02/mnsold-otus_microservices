@@ -3111,3 +3111,651 @@ trigger_deploy:
 ```
 
 Теперь при пул реквесте в ветку мастер последним этапом будет запускаться webhook, который запускает пайплайн из репозитория `reddit-deploy`по деплою приложения в stage/prod .
+
+
+
+# ДЗ №29
+
+##Подготовка
+
+Должен быть развернуть кластер k8s: 
+
+- минимум 2 ноды g1-small (1,5  ГБ) 
+
+- минимум 1 нода n1-standard-2 (7,5 ГБ) 
+
+В настройках: 
+
+- Stackdriver Logging  - Отключен  
+
+- Stackdriver Monitoring - Отключен 
+
+-  Устаревшие права доступа - Включено
+
+Устанавливаем nginx-ingress
+
+```bash
+helm install stable/nginx-ingress --name nginx
+
+#находим EXTERNAL-IP nginx-ingress
+kubectl get svc
+NAME                                  TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)                      AGE
+kubernetes                            ClusterIP      10.15.240.1     <none>          443/TCP                      7d21h
+nginx-nginx-ingress-controller        LoadBalancer   10.15.252.247   35.187.169.92   80:32433/TCP,443:31527/TCP   81s
+nginx-nginx-ingress-default-backend   ClusterIP      10.15.243.212   <none>          80/TCP                       81s
+
+sudo su -c 'echo "35.187.169.92 reddit reddit-prometheus reddit-grafana reddit-non-prod production reddit-kibana staging prod">>/etc/hosts'
+```
+
+Используемая версия helm
+
+```bash
+helm version
+Client: &version.Version{SemVer:"v2.14.1", GitCommit:"5270352a09c7e8b6e8c9593002a73535276507c0", GitTreeState:"clean"}
+Server: &version.Version{SemVer:"v2.14.1", GitCommit:"5270352a09c7e8b6e8c9593002a73535276507c0", GitTreeState:"clean"}
+```
+
+
+
+## Что будем использовать для мониторинга
+
+- prometheus - сервер сбора
+- grafana - сервер визуализации метрик
+- alertmanager - компонент  prometheus для алертинга
+- различные экспортеры для метрик prometheus  
+
+## prometheus
+
+- Загружаем чарт в локальную директорию
+
+  ```
+  cd kubernetes/Charts
+  helm fetch --untar stable/prometheus
+  ```
+
+- Создали `kubernetes/Charts/prometheus/custom_values.yml`.  Основные отличия от `values.yml`:
+  - отключена часть устанавливаемых сервисов (pushgateway, alertmanager, kube-state-metrics)
+  - включено создание Ingress’а для подключения через nginx 
+  - поправлен endpoint для сбора метрик cadvisor
+  - уменьшен интервал сбора метрик (с 1 минуты до 30 секунд)
+
+- Запускаем prometheus
+
+  ```bash
+  helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+  ```
+
+  prometheus будет доступен по ссылке http://reddit-prometheus
+
+### Targets
+
+У нас уже присутствует ряд endpoint’ов для сбора метрик  
+
+- метрики API-сервера (- job_name: 'kubernetes-apiservers')
+
+- метрики нод с cadvisor’ов (- job_name: 'kubernetes-nodes')
+
+  Для безопасного сбора, определен сбор метрик prometheus через https `scheme: https`, в котором указан:
+
+  1. Схема подключения - http (default) или https 
+  - Конфиг TLS - коревой сертификат сервера для проверки достоверности сервера 
+  - Токен для аутентификации на сервере
+
+  Используем `relabel_configs` для :
+  - Преобразовать все k8s лейблы таргета в лейблы prometheus (- action: labelmap )
+  - Поменять лейбл для адреса сбора метрик (- target_label: __address__)
+  - Поменять лейбл для пути сбора метрик ( - source_labels: [__meta_kubernetes_node_name] )
+
+  Документация по `relabel_configs` https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
+
+- сам prometheus
+
+Отметим, что можно собирать метрики cadvisor’а  (который уже является частью kubelet) через проксирующий запрос в kube-api-serve
+
+```bash
+#на примере собираемой метрики, ссылка которой отображена в таблице prometheus tarhets > kubernetes-nodes > Endpoint
+https://kubernetes.default.svc:443/api/v1/nodes/gke-otus-cluster-1-bigpool-bebaccd4-rqxp/proxy/metrics/cadvisor
+```
+
+### Метрики
+
+Метрики Cadvisor начинаются с `container_`. Cadvisor собирает лишь информацию о потреблении ресурсов 
+и производительности отдельных docker-контейнеров. При этом он ничего не знает о сущностях k8s (деплойменты, репликасеты, …). 
+
+####Kubernetes API (pod, service, deployment,replicaset,namespace,node,resourcequota,...)
+
+Для сбора этой информации будем использовать сервис [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics). Он входит в чарт Prometheus. Включим его.  Метрики будут начинаться с `kube_`
+
+Указываем enable в `kubernetes/Charts/prometheus/custom_values.yml`
+
+```yaml
+kubeStateMetrics:
+  ## If false, kube-state-metrics will not be installed
+  ##
+  enabled: enable
+```
+
+Применяем изменения prometheus
+
+```bash
+helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+```
+
+#### Включаем node-exporter
+
+Метрики будут начинаться с `node_`
+
+Указываем enable в `kubernetes/Charts/prometheus/custom_values.yml`
+
+```yaml
+nodeExporter:
+  ## If false, node-exporter will not be installed
+  ##
+  enabled: enable
+```
+
+Применяем изменения prometheus
+
+```bash
+helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+```
+
+### Метрики приложения
+
+Будем использовать механизм ServiceDiscovery для обнаружения приложений, вместо хардкода который использовали ранее, типа:
+
+```yaml
+prometheus.yml 
+ - job_name: 'ui'
+    static_configs:
+      - targets:
+        - 'ui:9292'
+  - job_name: 'comment'
+    static_configs:
+      - targets:
+        - 'comment:9292'
+```
+
+Запускаем приложение
+
+```bash
+helm upgrade reddit-test kubernetes/Charts/reddit --install
+helm upgrade production --namespace production kubernetes/Charts/reddit --install
+helm upgrade staging --namespace staging kubernetes/Charts/reddit --install
+```
+
+- Добавляем механизм ServiceDiscovery для обнаружения приложений
+
+  Добавляем `- job_name: 'reddit-endpoints'` в `kubernetes/Charts/prometheus/custom_values.yml`
+
+  `action: keep` - используем действие keep, чтобы оставить только эндпоинты сервисов с метками “app=reddit”
+
+  Применяем изменения
+
+  ```bash
+  helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+  ```
+
+- Добавляем метки k8s 
+
+  При выполнении предыдущего шага в targets prometheus получили  endpoind вида из которого сложно понять что это, например:
+
+  | Endpoint                        | Labels                        |
+  | ------------------------------- | ----------------------------- |
+  | http://10.12.0.213:9292/metrics | `instance="10.12.0.213:9292"` |
+
+  Т.к. все лейблы и аннотации k8s изначально отображаются в prometheus в формате:
+
+  ```rst
+  __meta_kubernetes_service_label_labelname
+  __meta_kubernetes_service_annotation_annotationname 
+  ```
+
+  Добавим метки k8s (отобразить все совпадения групп из regex в label’ы prometheus).
+
+  В `kubernetes/Charts/prometheus/custom_values.yml добавляем`
+
+  ```yaml
+         relabel_configs:
+            ...
+            - action: labelmap
+              regex: __meta_kubernetes_service_label_(.+)
+  ```
+
+  
+  Применяем конфигурацию
+  
+  ```
+  helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+  ```
+  Теперь Labels в таком формате
+  
+  | Endpoint                        | Labels                                                       |
+  | ------------------------------- | ------------------------------------------------------------ |
+  | http://10.12.0.213:9292/metrics | `app="reddit"` `component="comment"` `instance="10.12.0.213:9292"` `release="reddit-test"` |
+  
+  Метки вида `__meta_*` не публикуются, то нужно создать свои, перенеся в них информацию, скорректируем еще раз 
+  
+  `kubernetes/Charts/prometheus/custom_values.yml`
+  
+  ```yaml
+         relabel_configs:
+            ...
+            - source_labels: [__meta_kubernetes_namespace]
+              target_label: kubernetes_namespace
+            - source_labels: [__meta_kubernetes_service_name]
+              target_label: kubernetes_name
+  ```
+
+  Применяем конфигурацию
+
+  ```bash
+  helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+  ```
+
+  Теперь Labels в таком формате
+
+  | Endpoint                        | Labels                                                       |
+  | ------------------------------- | ------------------------------------------------------------ |
+  | http://10.12.0.213:9292/metrics | `app="reddit"` `component="comment"` `instance="10.12.0.213:9292"` `kubernetes_name="reddit-test-comment"` `kubernetes_namespace="default"` `release="reddit-test"` |
+
+  Чтобы отделить target-ы компонент друг от друга (по окружениям, по самим компонентам), а также выключать и 
+  включать опцию мониторинга для них с помощью все тех же label-ов  скорректируем еще раз 
+
+  `kubernetes/Charts/prometheus/custom_values.yml`
+
+  ```yaml
+         relabel_configs:
+            ...
+  # этот блок
+              - source_labels: [__meta_kubernetes_service_label_app]
+              action: keep
+              regex: reddit
+  
+  # на этот блок
+            - source_labels: [__meta_kubernetes_service_label_app, __meta_kubernetes_namespace]
+              action: keep
+              regex: reddit;(production|staging)+
+  ```
+
+  Применяем конфигурацию
+
+  ```bash
+  helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+  ```
+
+  Теперь Labels в таком формате
+
+  | Endpoint                        | Labels                                                       |
+  | ------------------------------- | ------------------------------------------------------------ |
+  | http://10.12.0.213:9292/metrics | `app="reddit"` `component="comment"` `instance="10.12.0.217:9292"` `kubernetes_name="production-comment"` `kubernetes_namespace="production"` `release="production"` |
+
+- Разделим метрики приложения reddit по компонентам.
+
+  Список возвращаемых source_labels `__meta_kubernetes_*` из ServiceDiscovery API kubernetes  https://prometheus.io/docs/prometheus/latest/configuration/configuration/#kubernetes_sd_config
+
+  Скорректируем `kubernetes/Charts/prometheus/custom_values.yml`, разбив `- job_name: 'reddit-endpoints'` на компоненты:
+  
+  - `- job_name: 'ui-endpoints'` 
+  - `- job_name: 'post-endpoints'` 
+  - `- job_name: 'comment-endpoints'`
+  
+  Применяем конфигурацию
+  
+  ```bash
+  helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+  ```
+
+##grafana
+
+- Устанавливаем grafana из helm
+
+  ```bash
+  helm upgrade --install grafana stable/grafana --set "adminPassword=admin" \
+  --set "service.type=NodePort" \
+  --set "ingress.enabled=true" \
+  --set "ingress.hosts={reddit-grafana}"
+  ```
+
+  Будет доступен по ссылке http://reddit-grafana  (admin/пароль выше)
+
+- Добавляем prometheus в data-source по имени сервиса
+
+  ```bash
+  get svc prom-prometheus-server
+  NAME                     TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)        AGE
+  prom-prometheus-server   LoadBalancer   10.15.252.136   35.195.176.214   80:32574/TCP   11h
+  ```
+
+  ```properties
+Name=Prometheus
+  URL=http://prom-prometheus-server
+Access=Server (по практике д.б. Proxy)
+  ```
+
+- Добавляем наиболее распространенный dashboard
+
+  Dashboard: Kubernetes cluster monitoring (via Prometheus) https://grafana.com/dashboards/315
+
+  Dashborads > Manage > Import > Grafana.com Dashboard:315 > Prometheus: Prometheus > Import finish
+
+- Добавляем Dashboards с прошлого ДЗ из директории `monitoring/grafana/dashboards/`
+
+### Параметризация Dashboard с использованием templating (variables)
+
+На графиках, относящихся к приложению, одновременно отображены значения метрик со всех источников сразу. При большом количестве сред и при их динамичном изменении имеет смысл сделать динамичной и удобно настройку наших дашбордов в Grafana.  Сделать это можно с помощью механизма templating’а.
+
+- Добавляем переменную
+
+  Setting Dashboard > Variables >  Add variable
+
+  ```properties
+  General:
+  Name=namespace - имя переменной
+  Type=Query
+  Label=Env - как будем видеть ее мы
+  
+  Query Options:
+  Data source=Prometheus
+  Refresh=On Dashboard Load
+  Query=label_values(namespace) - получить значения всех label-ов kubernetes_namespace
+  Regex=/.+/ - отфильтруем (уберем пустой namespace)
+  Sort=Disabled
+  
+  Selection Options:
+  Multi-value=enable - возможность выбирать несколько значений
+  Include All option=enable  - Возможность выбирать все значения одной кнопкой
+  ```
+
+  В Dashboards появится список с названием `Env`, в котором будут доступны все namespace.  Но графики пока не будут реагировать на выбор значения в этом списке.
+
+- Дорабатываем запросы к prometheus, чтобы выбор namespace в списке реагировал на графики.
+
+  График UI HTTP Request > Edit
+
+  ```properties
+  #меняем
+  rate(ui_request_count[1m])
+  
+  #на
+  rate(ui_request_count{kubernetes_namespace=~"$namespace"}[1m])
+  ```
+
+  Примеры запросов к prometheus https://prometheus.io/docs/prometheus/latest/querying/examples/
+
+  Теперь график реагирует на выбор namespace в списке.
+
+### Смешанные графики
+
+- Импортируем шаблон Kubernetes Deployment metrics
+
+  Kubernetes Deployment metrics https://grafana.com/dashboards/741
+
+  Этот дашбоард одновременно используются метрики и шаблоны из cAdvisor, и из kube-state-metrics для отображения сводной информации по деплойментам.
+
+
+
+## Задание со *
+
+Запустить alertmanager в k8s и настроить правила для контроля за доступностью api-сервера и хостов k8s.
+
+В файле `kubernetes/Charts/prometheus/custom_values.yml`:
+
+- разрешаем alertmanager 
+
+  ```yaml
+  alertmanager:
+    enabled: true
+  ```
+
+- Делаем нотификацю в слак
+
+  ```yaml
+  alertmanagerFiles:
+    alertmanager.yml: |-
+      global:
+        slack_api_url: 'https://...
+      ...
+  ```
+
+- Указываем правила алертов
+
+  За не доступность хостов отвечает задание `kubernetes-nodes` (в этом же файле), эти метрики видны в prometheus.
+
+  ```yaml
+  serverFiles:
+    alerts:
+      groups:
+      - name: Instances
+        rules:
+        - alert: InstanceDown
+        ...
+  ```
+
+  За не доступность apiservers отвечает задание `kubernetes-apiservers` (в этом же файле), эти метрики видны в prometheus.
+
+  ```yaml
+  serverFiles:
+    alerts:
+      groups:
+      - name: Instances
+      ...
+      - name: APIServers
+        rules:
+        - alert: InstanceAPIServerDown
+  ```
+
+- Применяем изменения
+
+  ```bash
+  helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+  ```
+  
+  В результате в prometheus появятся правила:
+  
+  ![hw29-prometheus-alerts-rules](assets/hw29-prometheus-alerts-rules.png)
+  
+  ![hw29-prometheus-alerts](assets/hw29-prometheus-alerts.png)
+  
+  Пригодится: 
+  
+  https://www.robustperception.io/alerting-on-down-instances
+  
+  https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+
+## Задание со *
+
+Установить в кластер Prometheus Operator.
+
+Вариант 1, по инструкции: https://github.com/coreos/prometheus-operator/blob/master/Documentation/user-guides/getting-started.md
+
+Вариант 2, используя helm: https://github.com/helm/charts/tree/master/stable/prometheus-operator
+
+Буду использовать Вариант 2.
+
+- Загружаем helm chart себе локально
+
+  ```bash
+  cd kubernetes/Charts
+  helm fetch --untar stable/prometheus-operator
+  ```
+
+- Делаем копию value.yaml которую будем корректировать
+
+  ```bash
+  cp prometheus-operator/values.yaml prometheus-operator/custom_values.yaml
+  ```
+
+- В prometheus-operator входит много компонентов.
+
+  Компоненты которые в него входят, и у которых `enabled: true`, будут подняты, если у нас уже есть prometheus/alertmanager/grafana/node-exporter/... ,  prometheus-operator поднимет аналогичные свои компоненты и будет работать с ними, а не с тем что у нас уже есть.
+
+  Не разбирался можно ли его вообще прикрутить к существующим сервисам типа prometheus/alertmanager/.... Поэтому в `kubernetes/Charts/prometheus-operator/custom_values.yaml` отключил все, кроме непосредственно `prometheus-operator` (все компоненты kube*, тоже отключил).
+
+- В файле `kubernetes/Charts/prometheus-operator/custom_values.yaml` включаем ингрес для prometheus, который поднимает свой prometheus сервер
+
+  ```yaml
+  prometheus:
+    enabled: true
+    ingress:
+      enabled: true
+      hosts:
+        - reddit-prometheus-operator
+  ```
+
+- Добавляем мониторинг компонента `kubernetes/Charts/prometheus-operator/custom_values.yaml`
+
+  ```yaml
+  prometheus:
+    additionalServiceMonitors:
+    - name: post-component
+      selector:
+        matchLabels:
+          component: post
+      namespaceSelector:
+        any: true
+      endpoints:
+        - targetPort: 5000
+          interval: 30s
+          path: /metrics
+          scheme: http
+  ```
+
+- Устанавливаем prometheus-operator
+
+  ```bash
+  helm upgrade prometheus-operator kubernetes/Charts/prometheus-operator -f kubernetes/Charts/prometheus-operator/custom_values.yaml --install
+  ```
+
+  > Если возникли ошибки типа:
+  >
+  > Error: object is being deleted: customresourcedefinitions.apiextensions.k8s.io "alertmanagers.monitoring.coreos.com" already exists
+  >
+  > Значит уже запускали установку и нужно вручную удалить CRDs в соответствии с руководством https://github.com/helm/charts/tree/master/stable/prometheus-operator#uninstalling-the-chart
+  >
+  > ```bash
+  > kubectl delete crd prometheuses.monitoring.coreos.com
+  > kubectl delete crd prometheusrules.monitoring.coreos.com
+  > kubectl delete crd servicemonitors.monitoring.coreos.com
+  > kubectl delete crd podmonitors.monitoring.coreos.com
+  > kubectl delete crd alertmanagers.monitoring.coreos.com
+  > ```
+  >
+  > Затем повторить установку
+
+
+
+![prometheus-operator](assets/hw29-prometheus-operator.png)
+
+Пригодится:
+
+https://github.com/helm/charts/tree/master/stable/prometheus-operator#uninstalling-the-chart
+
+https://github.com/helm/charts/issues/9871
+
+https://habr.com/ru/company/flant/blog/353410/
+
+## Логирование (EFK)
+
+- ElasticSearch - база данных + поисковый движок
+- Fluentd - шипер (отправитель) и агрегатор логов 
+- Kibana - веб-интерфейс для запросов в хранилище и отображения их результатов
+
+### Подготовка
+
+Добавить label самой мощной ноде в кластере 
+
+```bash
+kubectl label node gke-otus-cluster-1-bigpool-bebaccd4-rqxp elastichost=true
+```
+
+Предварительно освобождаем ресурсы запущенные на самой мощной ноде, т.к. ресурсов не хватит запустить там еще и EFK
+
+```sh
+helm delete prometheus-operator --purge
+helm delete prom --purge
+```
+
+- Создаем файлы из ДЗ в директории `mnsold-otus_microservices/kubernetes/efk/`
+
+  - ﬂuentd-ds.yaml
+  - ﬂuentd-conﬁgmap.yaml
+  - es-service.yaml
+  - es-statefulSet.yaml
+  - es-pvc.yaml
+
+- Запускаем EFK
+
+  ```bash
+  kubectl apply -f kubernetes/efk
+  ```
+
+- Устанавливаем Kibana из helm chart
+
+  ```bash
+  helm upgrade --install kibana stable/kibana \
+  --set "ingress.enabled=true" \
+  --set "ingress.hosts={reddit-kibana}" \
+  --set "env.ELASTICSEARCH_URL=http://elasticsearch-logging:9200" \
+  --version 0.1.1
+  ```
+
+- Создаем индекс по умолчанию
+
+  Переходим в Kibana по ссылке http://reddit-kibana/
+
+  ```properties
+  Index name or pattern=fluentd-*
+  Index contains time-based events=enable
+  Time-field name=@timestamp
+  ```
+
+- В Discover вводим строку поиска
+
+  ```rst
+  kubernetes.labels.component:post OR kubernetes.labels.component:comment OR kubernetes.labels.component:ui
+  ```
+
+  Если открыть любой из рез-тов поиска - в нем видно множество инфы о k8s:
+
+  - Особенность работы ﬂuentd в k8s состоит в том, что его задача помимо сбора самих логов приложений, сервисов и хостов, также распознать дополнительные метаданные (как правило это дополнительные поля с лейблами).
+  - Откуда и какие логи собирает ﬂuentd - видно в его ﬂuentd-conﬁgmap.yaml и в ﬂuentd-ds.yaml.
+
+Пример:
+
+| Time                    | _source                                                      |
+| ----------------------- | ------------------------------------------------------------ |
+| July 3th 2019, 23:53:13 | `kubernetes.labels.component: post` `addr: 10.12.0.218` `event: request` `level: info` `method: GET` `path: /healthcheck?` `request_id: - ` `response_status: 200` `service: post` `timestamp: 2019-07-03 20:53:13` `log: {"addr": "10.12.0.218", "event": "request", "level": "info", "method": "GET", "path": "/healthcheck?", "request_id": null, "response_status": 200, "service": "post", "timestamp": "2019-07-03 20:53:13"} ` `stream: stdout` `docker.container_id: a5d2ac4682551d03bc5a6a943ad4d74afd5875b82690c40dbb558c5238408127` `kubernetes.container_name: post` `kubernetes.namespace_name: production` `kubernetes.pod_name: production-post-598589d6c8-h9vvp` `kubernetes.pod_id: 7dd821e4-9d0f-11e9-a0ef` |
+
+
+
+| Field                                   | Value                                                        |
+| --------------------------------------- | ------------------------------------------------------------ |
+| @timestamp                              | July 3th   2019, 23:53:13.000                                |
+| t _id                                   | AWu7wstCx-2PPxtqBgYx                                         |
+| t _index                                | fluentd-2019.07.03                                           |
+| # _score                                | -                                                            |
+| t _type                                 | fluentd                                                      |
+| t addr                                  | 10.12.0.218                                                  |
+| t   docker.container_id                 | a5d2ac4682551d03bc5a6a943ad4d74afd5875b82690c40dbb558c5238408127 |
+| t event                                 | request                                                      |
+| t   kubernetes.container_name           | post                                                         |
+| t   kubernetes.host                     | gke-otus-cluster-1-otus-node-pool-1-a35604ba-ntq0            |
+| t   kubernetes.labels.app               | reddit                                                       |
+| t   kubernetes.labels.component         | post                                                         |
+| t   kubernetes.labels.pod-template-hash | 598589d6c8                                                   |
+| t   kubernetes.labels.release           | production                                                   |
+| t   kubernetes.master_url               | https://10.15.240.1:443/api                                  |
+| t   kubernetes.namespace_name           | production                                                   |
+| t   kubernetes.pod_id                   | 7dd821e4-9d0f-11e9-a0ef-42010a8400e2                         |
+| t   kubernetes.pod_name                 | production-post-598589d6c8-h9vvp                             |
+| t level                                 | info                                                         |
+| t log                                   | {"addr":   "10.12.0.218", "event": "request", "level":   "info", "method": "GET", "path":   "/healthcheck?", "request_id": null,   "response_status": 200, "service": "post",   "timestamp": "2019-07-03 20:53:13"} |
+| t method                                | GET                                                          |
+| t path                                  | /healthcheck?                                                |
+| ?   request_id                          | -                                                            |
+| #   response_status                     | 200                                                          |
+| t service                               | post                                                         |
+| t stream                                | stdout                                                       |
+| t tag                                   | kubernetes.var.log.containers.production-post-598589d6c8-h9vvp_production_post-a5d2ac4682551d03bc5a6a943ad4d74afd5875b82690c40dbb558c5238408127.log |
+| t   timestamp                           | 2019-07-03   20:53:13                                        |
